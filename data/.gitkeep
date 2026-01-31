@@ -1,0 +1,6 @@
+# This directory holds data files (not committed to git)
+# Subdirectories:
+#   raw/     - Downloaded archives
+#   bronze/  - Parsed source-shaped data
+#   silver/  - Normalized with canonical IDs
+#   gold/    - Graph-ready edge tables
