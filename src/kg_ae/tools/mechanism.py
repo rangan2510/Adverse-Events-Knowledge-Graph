@@ -212,3 +212,159 @@ def expand_gene_context(gene_keys: list[int], min_disease_score: float = 0.3) ->
         result["diseases"][gene_key] = get_gene_diseases(gene_key, min_disease_score)
 
     return result
+
+
+@dataclass
+class DiseaseGene:
+    """Disease-gene association (reverse of GeneDisease)."""
+    disease_key: int
+    disease_label: str
+    gene_key: int
+    gene_symbol: str
+    score: float | None = None
+    source: str | None = None  # opentargets, ctd, clingen, etc.
+
+
+@dataclass
+class GeneInteractor:
+    """Gene-gene interaction from STRING."""
+    gene_key: int
+    gene_symbol: str
+    interactor_key: int
+    interactor_symbol: str
+    score: float  # STRING combined score (0-1)
+
+
+def get_disease_genes(
+    disease_key: int,
+    sources: list[str] | None = None,
+    min_score: float = 0.0,
+    limit: int = 100,
+) -> list[DiseaseGene]:
+    """
+    Get genes associated with a disease (reverse lookup).
+
+    Aggregates from multiple sources: Open Targets, CTD, ClinGen.
+    Note: Data model is Gene -> HasClaim -> Claim -> ClaimDisease -> Disease,
+    so we traverse from Gene and filter by disease_key.
+
+    Args:
+        disease_key: The disease's primary key
+        sources: Filter by source datasets, or None for all
+            Valid: ['opentargets', 'ctd', 'clingen']
+        min_score: Minimum association score (0-1)
+        limit: Maximum number of results
+
+    Returns:
+        List of DiseaseGene sorted by score descending
+    """
+    # Build claim type filter
+    claim_types = []
+    if sources is None:
+        claim_types = [
+            "GENE_DISEASE",
+            "GENE_DISEASE_CTD",
+            "GENE_DISEASE_CLINGEN",
+        ]
+    else:
+        source_map = {
+            "opentargets": "GENE_DISEASE",
+            "ctd": "GENE_DISEASE_CTD",
+            "clingen": "GENE_DISEASE_CLINGEN",
+        }
+        claim_types = [source_map[s] for s in sources if s in source_map]
+
+    if not claim_types:
+        return []
+
+    placeholders = ",".join("?" for _ in claim_types)
+
+    # Traverse: Gene -> HasClaim -> Claim -> ClaimDisease -> Disease
+    # Filter by disease_key to get genes associated with this disease
+    rows = execute(
+        f"""
+        SELECT TOP {limit}
+            dis.disease_key, dis.label,
+            g.gene_key, g.symbol,
+            c.strength_score, c.claim_type
+        FROM kg.Gene g
+            , kg.HasClaim hc
+            , kg.Claim c
+            , kg.ClaimDisease cd
+            , kg.Disease dis
+        WHERE MATCH(g-(hc)->c-(cd)->dis)
+          AND dis.disease_key = ?
+          AND c.claim_type IN ({placeholders})
+          AND (c.strength_score IS NULL OR c.strength_score >= ?)
+        ORDER BY c.strength_score DESC
+        """,
+        (disease_key, *claim_types, min_score),
+        commit=False,
+    )
+
+    source_lookup = {
+        "GENE_DISEASE": "opentargets",
+        "GENE_DISEASE_CTD": "ctd",
+        "GENE_DISEASE_CLINGEN": "clingen",
+    }
+
+    return [
+        DiseaseGene(
+            disease_key=row[0],
+            disease_label=row[1],
+            gene_key=row[2],
+            gene_symbol=row[3],
+            score=row[4],
+            source=source_lookup.get(row[5]),
+        )
+        for row in rows
+    ]
+
+
+def get_gene_interactors(
+    gene_key: int,
+    min_score: float = 0.7,
+    limit: int = 100,
+) -> list[GeneInteractor]:
+    """
+    Get gene-gene interactions from STRING.
+
+    Args:
+        gene_key: The gene's primary key
+        min_score: Minimum STRING combined score (0-1), default 0.7 (high confidence)
+        limit: Maximum number of interactors
+
+    Returns:
+        List of GeneInteractor sorted by score descending
+    """
+    rows = execute(
+        f"""
+        SELECT TOP {limit}
+            g1.gene_key, g1.symbol,
+            g2.gene_key, g2.symbol,
+            c.strength_score
+        FROM kg.Gene g1
+            , kg.HasClaim hc
+            , kg.Claim c
+            , kg.ClaimGene cg
+            , kg.Gene g2
+        WHERE MATCH(g1-(hc)->c-(cg)->g2)
+          AND g1.gene_key = ?
+          AND c.claim_type = 'GENE_GENE_STRING'
+          AND c.strength_score >= ?
+        ORDER BY c.strength_score DESC
+        """,
+        (gene_key, min_score),
+        commit=False,
+    )
+
+    return [
+        GeneInteractor(
+            gene_key=row[0],
+            gene_symbol=row[1],
+            interactor_key=row[2],
+            interactor_symbol=row[3],
+            score=row[4],
+        )
+        for row in rows
+    ]

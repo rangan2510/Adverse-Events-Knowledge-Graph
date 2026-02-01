@@ -44,6 +44,9 @@ data/bronze/
 data/silver/
 data/gold/
 
+# External tools (llama.cpp, model conversions)
+external/
+
 # Environment
 .env
 .env.local

@@ -18,6 +18,7 @@ class Settings(BaseSettings):
         env_prefix="KG_AE_",
         env_file=".env",
         env_file_encoding="utf-8",
+        extra="ignore",  # Allow other env vars like HUGGINGFACE_TOKEN
     )
 
     # SQL Server connection

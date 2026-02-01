@@ -171,3 +171,83 @@ def resolve_diseases(terms: list[str]) -> dict[str, ResolvedEntity | None]:
         results[term] = None
 
     return results
+
+
+def resolve_adverse_events(terms: list[str]) -> dict[str, ResolvedEntity | None]:
+    """
+    Resolve adverse event terms to ae_key.
+
+    Uses exact match, then partial match on ae_label.
+    Critical for user queries mentioning AE terms like "myopathy", "hepatotoxicity".
+
+    Args:
+        terms: List of adverse event terms to resolve
+
+    Returns:
+        Dict mapping input term to ResolvedEntity or None if not found
+    """
+    results = {}
+    for term in terms:
+        term_lower = term.lower().strip()
+
+        # Exact match on ae_label
+        rows = execute(
+            """
+            SELECT ae_key, ae_label
+            FROM kg.AdverseEvent
+            WHERE LOWER(ae_label) = ?
+            """,
+            (term_lower,),
+            commit=False,
+        )
+        if rows:
+            results[term] = ResolvedEntity(
+                key=rows[0][0],
+                name=rows[0][1],
+                source="ae_label",
+                confidence=1.0,
+            )
+            continue
+
+        # Partial match on ae_label
+        rows = execute(
+            """
+            SELECT TOP 1 ae_key, ae_label
+            FROM kg.AdverseEvent
+            WHERE LOWER(ae_label) LIKE ?
+            ORDER BY LEN(ae_label)
+            """,
+            (f"%{term_lower}%",),
+            commit=False,
+        )
+        if rows:
+            results[term] = ResolvedEntity(
+                key=rows[0][0],
+                name=rows[0][1],
+                source="ae_label_partial",
+                confidence=0.7,
+            )
+            continue
+
+        # Try matching via ae_code if provided (e.g., MedDRA codes)
+        rows = execute(
+            """
+            SELECT TOP 1 ae_key, ae_label
+            FROM kg.AdverseEvent
+            WHERE ae_code = ?
+            """,
+            (term,),
+            commit=False,
+        )
+        if rows:
+            results[term] = ResolvedEntity(
+                key=rows[0][0],
+                name=rows[0][1],
+                source="ae_code",
+                confidence=1.0,
+            )
+            continue
+
+        results[term] = None
+
+    return results

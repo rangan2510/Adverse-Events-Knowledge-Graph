@@ -210,3 +210,131 @@ def explain_paths(
     paths.sort(key=lambda p: p.score, reverse=True)
 
     return [p.to_dict() for p in paths[:top_k]]
+
+
+@dataclass
+class ScoringPolicy:
+    """Policy for scoring mechanistic paths."""
+    # Source weights (higher = more trusted)
+    source_weights: dict[str, float] = field(default_factory=lambda: {
+        "drugcentral": 1.0,
+        "opentargets": 0.95,
+        "chembl": 0.9,
+        "reactome": 0.9,
+        "gtop": 0.85,
+        "sider": 0.8,
+        "clingen": 0.85,
+        "ctd": 0.7,
+        "string": 0.6,
+        "faers": 0.5,
+        "openfda": 0.5,
+        "hpo": 0.7,
+    })
+    # Multiplier for paths with multiple independent sources
+    multi_source_bonus: float = 1.2
+    # Minimum evidence count required
+    min_evidence: int = 1
+    # Penalty per hop (longer paths are less certain)
+    length_penalty: float = 0.95
+
+
+def score_paths(
+    paths: list[MechanisticPath],
+    policy: ScoringPolicy | None = None,
+) -> list[MechanisticPath]:
+    """
+    Score and rank mechanistic paths using a deterministic policy.
+
+    Scoring formula:
+        base_score = path.score (from graph queries)
+        source_weight = average weight of sources contributing to path
+        length_factor = policy.length_penalty ^ (num_steps - 1)
+        multi_source = policy.multi_source_bonus if >1 source, else 1.0
+        final_score = base_score * source_weight * length_factor * multi_source
+
+    Args:
+        paths: List of MechanisticPath to score
+        policy: ScoringPolicy with weights, or None for defaults
+
+    Returns:
+        List of MechanisticPath sorted by score descending
+    """
+    if policy is None:
+        policy = ScoringPolicy()
+
+    scored_paths = []
+
+    for path in paths:
+        # Skip paths with insufficient evidence
+        if path.evidence_count < policy.min_evidence:
+            continue
+
+        # Start with base score
+        score = path.score if path.score else 0.5
+
+        # Apply length penalty
+        num_hops = len(path.steps) - 1
+        if num_hops > 0:
+            score *= policy.length_penalty ** num_hops
+
+        # Check for multi-source support (approximated by evidence count)
+        if path.evidence_count > 1:
+            score *= policy.multi_source_bonus
+
+        # Update path score
+        path.score = score
+        scored_paths.append(path)
+
+    # Sort by final score descending
+    scored_paths.sort(key=lambda p: p.score, reverse=True)
+    return scored_paths
+
+
+def score_paths_with_evidence(
+    paths: list[MechanisticPath],
+    policy: ScoringPolicy | None = None,
+) -> list[dict]:
+    """
+    Score paths and return detailed breakdown.
+
+    Like score_paths but returns scoring components for explainability.
+
+    Args:
+        paths: List of MechanisticPath to score
+        policy: ScoringPolicy with weights, or None for defaults
+
+    Returns:
+        List of dicts with path, score components, and final score
+    """
+    if policy is None:
+        policy = ScoringPolicy()
+
+    results = []
+
+    for path in paths:
+        if path.evidence_count < policy.min_evidence:
+            continue
+
+        base_score = path.score if path.score else 0.5
+        num_hops = len(path.steps) - 1
+        length_factor = policy.length_penalty ** num_hops if num_hops > 0 else 1.0
+        multi_source_factor = (
+            policy.multi_source_bonus if path.evidence_count > 1 else 1.0
+        )
+        final_score = base_score * length_factor * multi_source_factor
+
+        results.append({
+            "path": path.to_dict(),
+            "scoring": {
+                "base_score": base_score,
+                "length_factor": length_factor,
+                "num_hops": num_hops,
+                "evidence_count": path.evidence_count,
+                "multi_source_factor": multi_source_factor,
+                "final_score": final_score,
+            },
+        })
+
+    # Sort by final score descending
+    results.sort(key=lambda r: r["scoring"]["final_score"], reverse=True)
+    return results
