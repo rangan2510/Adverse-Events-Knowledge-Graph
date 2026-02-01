@@ -51,6 +51,8 @@ ONLY output valid JSON matching the schema below.
 4. Order calls logically: resolve -> query -> expand -> paths
 5. Return ONLY valid JSON matching the ToolPlan schema
 6. NO prose, NO explanations, NO markdown - just JSON
+7. MAXIMUM 5 tool calls total - be selective, not exhaustive
+8. For adverse events queries: resolve_drugs + get_drug_adverse_events is usually sufficient
 
 ## Output Format
 
@@ -112,6 +114,92 @@ If the evidence is insufficient to answer the query, explain what is missing.
 """
 
 
+SUFFICIENCY_EVALUATOR_PROMPT = """You are an information sufficiency evaluator for a pharmacovigilance knowledge graph query system.
+
+## Your Task
+
+Evaluate whether the current tool outputs provide SUFFICIENT information to answer the user's query.
+
+## Evaluation Criteria
+
+Consider information SUFFICIENT if:
+1. The query can be answered with meaningful, evidence-backed conclusions
+2. Key mechanistic relationships are present (if relevant)
+3. Primary adverse event data is available (if relevant)
+4. Critical context exists to make the answer useful
+
+Consider information INSUFFICIENT if:
+1. Critical data is missing (e.g., no AE data for a drug-AE query)
+2. Mechanistic pathways are completely unknown
+3. The answer would be too speculative without more evidence
+4. Important context is missing (e.g., patient conditions not explored)
+
+Consider information PARTIALLY_SUFFICIENT if:
+1. Basic answer is possible but missing depth
+2. Some pathways known but others unexplored
+3. AE data exists but mechanism unclear
+
+## Output Format
+
+Return ONLY valid JSON matching the SufficiencyEvaluation schema:
+
+{
+  "status": "sufficient|insufficient|partially_sufficient",
+  "confidence": 0.0-1.0,
+  "reasoning": "Explain your evaluation",
+  "information_gaps": [
+    {"category": "mechanism", "description": "Missing pathway data", "priority": 1},
+    {"category": "adverse_events", "description": "No FAERS signals", "priority": 2}
+  ],
+  "can_answer_with_current_data": true|false,
+  "iteration_count": <current_iteration>
+}
+
+Be conservative: only mark as SUFFICIENT if a healthcare professional would find the answer actionable.
+"""
+
+
+REFINEMENT_QUERY_PROMPT = """You are a query refinement specialist for a pharmacovigilance knowledge graph.
+
+## Your Task
+
+Based on the information gaps identified, generate a focused refinement query that will fill the most critical gaps.
+
+## Guidelines
+
+1. **Be Specific**: Target the exact missing information
+2. **Prioritize**: Focus on the highest-priority gaps first
+3. **Actionable**: Make it easy for the planner to generate tool calls
+4. **Build on Existing**: Reference already-resolved entities
+
+## Examples
+
+Original: "What adverse events does metformin cause?"
+Gap: Missing mechanistic pathways
+Refinement: "What are the mechanistic pathways through which metformin causes lactic acidosis?"
+
+Original: "Combined AEs of aspirin and warfarin"
+Gap: No drug-drug interaction data
+Refinement: "What are the known drug-drug interactions between aspirin and warfarin, and what pathways do they share?"
+
+## Output Format
+
+Return ONLY valid JSON matching the RefinementRequest schema:
+
+{
+  "refinement_query": "Focused query to get missing info",
+  "focus_areas": ["mechanism", "pathways", "interactions"],
+  "suggested_tools": ["get_gene_pathways", "find_drug_to_ae_paths"],
+  "priority_gaps": [
+    {"category": "mechanism", "description": "Missing pathway data", "priority": 1}
+  ],
+  "iteration_count": <current_iteration>
+}
+
+Generate a query that will lead to a complete answer when combined with existing data.
+"""
+
+
 def format_planner_messages(query: str) -> list[dict]:
     """Format messages for planner LLM."""
     return [
@@ -128,5 +216,63 @@ def format_narrator_messages(query: str, evidence_context: str) -> list[dict]:
     )
     return [
         {"role": "system", "content": NARRATOR_SYSTEM_PROMPT},
+        {"role": "user", "content": user_content},
+    ]
+
+
+def format_sufficiency_evaluation_messages(
+    original_query: str,
+    current_iteration: int,
+    tool_outputs: str,
+    cumulative_context: str = "",
+) -> list[dict]:
+    """Format messages for sufficiency evaluation."""
+    user_content = f"""## Original Query
+{original_query}
+
+## Current Iteration
+{current_iteration}
+
+## Tool Outputs from This Iteration
+{tool_outputs}
+
+{f"## Context from Previous Iterations\n{cumulative_context}\n" if cumulative_context else ""}
+---
+
+Evaluate whether the information above is sufficient to answer the original query.
+Return ONLY valid JSON matching the SufficiencyEvaluation schema.
+"""
+    return [
+        {"role": "system", "content": SUFFICIENCY_EVALUATOR_PROMPT},
+        {"role": "user", "content": user_content},
+    ]
+
+
+def format_refinement_messages(
+    original_query: str,
+    current_iteration: int,
+    sufficiency_eval: dict,
+    cumulative_context: str = "",
+) -> list[dict]:
+    """Format messages for refinement query generation."""
+    import json
+    
+    user_content = f"""## Original Query
+{original_query}
+
+## Current Iteration
+{current_iteration}
+
+## Sufficiency Evaluation
+{json.dumps(sufficiency_eval, indent=2)}
+
+{f"## Context from Previous Iterations\n{cumulative_context}\n" if cumulative_context else ""}
+---
+
+Based on the information gaps, generate a refinement query for the next iteration.
+Return ONLY valid JSON matching the RefinementRequest schema.
+"""
+    return [
+        {"role": "system", "content": REFINEMENT_QUERY_PROMPT},
         {"role": "user", "content": user_content},
     ]

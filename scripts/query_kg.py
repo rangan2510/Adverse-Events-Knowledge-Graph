@@ -92,7 +92,7 @@ class ToolResult:
     result: Any = None
     error: str | None = None
     
-    def to_context(self, max_items: int = 25) -> str:
+    def to_context(self, max_items: int = 50) -> str:
         """
         Format for narrator context.
         
@@ -111,17 +111,20 @@ class ToolResult:
             if total == 0:
                 return f"### {self.tool}\nNo results"
             
-            # Format list of dataclass objects (with truncation)
+            # Smart sampling: group by drug/gene if applicable, sample evenly
+            sampled_items = self._smart_sample(self.result, max_items)
+            
+            # Format list of dataclass objects
             items = []
-            for item in self.result[:max_items]:
+            for item in sampled_items:
                 if hasattr(item, "__dataclass_fields__"):
                     items.append(self._format_dataclass(item))
                 else:
                     items.append(str(item))
             
             truncation_note = ""
-            if total > max_items:
-                truncation_note = f"\n[Showing {max_items} of {total} results]"
+            if total > len(sampled_items):
+                truncation_note = f"\n[Showing {len(sampled_items)} of {total} results - sampled across all entities]"
             
             return f"### {self.tool}\n" + "\n".join(f"- {i}" for i in items) + truncation_note
         
@@ -136,6 +139,50 @@ class ToolResult:
             return f"### {self.tool}\n" + self._format_dataclass(self.result)
         
         return f"### {self.tool}\n{self.result}"
+    
+    def _smart_sample(self, items: list, max_items: int) -> list:
+        """
+        Smart sample from list - groups by drug/gene key and samples evenly.
+        
+        For multi-drug AE queries, this ensures each drug gets representation
+        instead of just showing the first N items (which would be all one drug).
+        """
+        if len(items) <= max_items:
+            return items
+        
+        # Try to group by common keys (drug_key, drug_name, gene_key, etc.)
+        group_keys = ["drug_key", "drug_name", "gene_key", "gene_symbol"]
+        
+        for group_key in group_keys:
+            # Check if items have this attribute
+            if items and hasattr(items[0], group_key):
+                groups = {}
+                for item in items:
+                    key_val = getattr(item, group_key, None)
+                    if key_val not in groups:
+                        groups[key_val] = []
+                    groups[key_val].append(item)
+                
+                # If we have multiple groups, sample evenly
+                if len(groups) > 1:
+                    sampled = []
+                    items_per_group = max(1, max_items // len(groups))
+                    
+                    for group_val, group_items in groups.items():
+                        sampled.extend(group_items[:items_per_group])
+                    
+                    # If we have room for more, add extras
+                    remaining = max_items - len(sampled)
+                    if remaining > 0:
+                        all_remaining = []
+                        for group_val, group_items in groups.items():
+                            all_remaining.extend(group_items[items_per_group:])
+                        sampled.extend(all_remaining[:remaining])
+                    
+                    return sampled[:max_items]
+        
+        # Fallback to simple truncation
+        return items[:max_items]
     
     def _format_dataclass(self, obj) -> str:
         """Format a dataclass object as a string."""
@@ -333,7 +380,7 @@ def format_context_for_narrator(
     query: str,
     plan: ToolPlan,
     results: list[ToolResult],
-    max_items_per_tool: int = 25,
+    max_items_per_tool: int = 50,
 ) -> str:
     """
     Format everything for the narrator LLM.

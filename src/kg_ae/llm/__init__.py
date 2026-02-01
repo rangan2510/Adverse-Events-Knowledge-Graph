@@ -19,15 +19,29 @@ Usage:
 
 from .config import LLMConfig
 from .schemas import ToolName, ToolCall, ToolPlan, ResolvedEntities
+from .iterative_schemas import (
+    SufficiencyStatus,
+    InformationGap,
+    SufficiencyEvaluation,
+    RefinementRequest,
+    ToolExecutionRecord,
+    IterationRecord,
+    IterativeContext,
+)
 from .evidence import EvidencePack
 from .client import PlannerClient, NarratorClient
 from .executor import ToolExecutor
 from .orchestrator import Orchestrator, QueryResult, ask
+from .iterative_orchestrator import IterativeOrchestrator
 from .prompts import (
     PLANNER_SYSTEM_PROMPT,
     NARRATOR_SYSTEM_PROMPT,
+    SUFFICIENCY_EVALUATOR_PROMPT,
+    REFINEMENT_QUERY_PROMPT,
     format_planner_messages,
     format_narrator_messages,
+    format_sufficiency_evaluation_messages,
+    format_refinement_messages,
 )
 
 __all__ = [
@@ -38,6 +52,14 @@ __all__ = [
     "ToolCall",
     "ToolPlan",
     "ResolvedEntities",
+    # Iterative Reasoning Schemas
+    "SufficiencyStatus",
+    "InformationGap",
+    "SufficiencyEvaluation",
+    "RefinementRequest",
+    "ToolExecutionRecord",
+    "IterationRecord",
+    "IterativeContext",
     # Evidence
     "EvidencePack",
     # Clients
@@ -45,9 +67,19 @@ __all__ = [
     "NarratorClient",
     # Executor
     "ToolExecutor",
-    # Orchestrator
+    # Orchestrators
     "Orchestrator",
     "QueryResult",
+    "IterativeOrchestrator",
+    # Prompts
+    "PLANNER_SYSTEM_PROMPT",
+    "NARRATOR_SYSTEM_PROMPT",
+    "SUFFICIENCY_EVALUATOR_PROMPT",
+    "REFINEMENT_QUERY_PROMPT",
+    "format_planner_messages",
+    "format_narrator_messages",
+    "format_sufficiency_evaluation_messages",
+    "format_refinement_messages",
     "ask",
     # Prompts
     "PLANNER_SYSTEM_PROMPT",

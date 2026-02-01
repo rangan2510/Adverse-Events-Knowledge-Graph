@@ -92,18 +92,63 @@ class PlannerClient:
 
 class NarratorClient:
     """
-    Client for the narrator LLM (MediPhi).
+    Client for the narrator LLM (Phi-4).
 
-    Returns free-form text summarizing evidence.
-    Does NOT use structured output - just streaming text.
+    Supports both free-form text and structured output (for sufficiency evaluation).
     """
 
     def __init__(self, config: LLMConfig | None = None):
         self.config = config or LLMConfig()
-        self._client = OpenAI(
+        self._raw_client = OpenAI(
             base_url=self.config.narrator_url,
             api_key="not-needed",
         )
+        # Wrap with instructor for structured output when needed
+        self._instructor_client = instructor.from_openai(
+            self._raw_client,
+            mode=instructor.Mode.JSON_SCHEMA,
+        )
+        # Keep raw client for text generation
+        self._client = self._raw_client
+
+    def generate_text(self, messages: list[dict]) -> str:
+        """
+        Generate free-form text response.
+
+        Args:
+            messages: Chat messages list
+
+        Returns:
+            Generated text
+        """
+        response = self._client.chat.completions.create(
+            model=self.config.narrator_model,
+            messages=messages,
+            temperature=self.config.narrator_temperature,
+            max_tokens=self.config.narrator_max_tokens,
+        )
+        return response.choices[0].message.content or ""
+
+    def generate_structured(self, messages: list[dict], response_model):
+        """
+        Generate structured output matching Pydantic model.
+
+        Args:
+            messages: Chat messages list
+            response_model: Pydantic model class to enforce
+
+        Returns:
+            Instance of response_model
+        """
+        result = self._instructor_client.chat.completions.create(
+            model=self.config.narrator_model,
+            messages=messages,
+            response_model=response_model,
+            temperature=self.config.narrator_temperature,
+            max_tokens=self.config.narrator_max_tokens,
+            max_retries=2,
+        )
+        return result
 
     def narrate(self, query: str, evidence_context: str) -> str:
         """
@@ -117,14 +162,7 @@ class NarratorClient:
             Free-form text summary addressing the query
         """
         messages = format_narrator_messages(query, evidence_context)
-
-        response = self._client.chat.completions.create(
-            model=self.config.narrator_model,
-            messages=messages,
-            temperature=self.config.narrator_temperature,
-            max_tokens=self.config.narrator_max_tokens,
-        )
-        return response.choices[0].message.content or ""
+        return self.generate_text(messages)
 
     def narrate_stream(self, query: str, evidence_context: str):
         """
