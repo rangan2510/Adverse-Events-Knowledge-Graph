@@ -7,8 +7,12 @@ Converts bronze Parquet to silver with canonical IDs.
 from pathlib import Path
 
 import polars as pl
+from rich.console import Console
+from rich.table import Table
 
 from kg_ae.datasets.base import BaseNormalizer
+
+console = Console()
 
 
 class DrugCentralNormalizer(BaseNormalizer):
@@ -23,6 +27,7 @@ class DrugCentralNormalizer(BaseNormalizer):
         Returns:
             Dict mapping table names to silver Parquet paths
         """
+        console.print("[bold cyan]DrugCentral Normalizer[/]")
         results = {}
 
         # Normalize drug entities
@@ -87,7 +92,7 @@ class DrugCentralNormalizer(BaseNormalizer):
                 )
 
         df.write_parquet(dest)
-        print(f"  [normalized] drugs: {len(df):,} rows → {dest.name}")
+        console.print(f"    [green]✓[/] drugs: {len(df):,} rows → {dest.name}")
         return dest
 
     def _normalize_genes(self) -> Path | None:
@@ -110,7 +115,7 @@ class DrugCentralNormalizer(BaseNormalizer):
                 gene_cols.append(col)
 
         if not gene_cols:
-            print("  [warning] No gene columns found in targets")
+            console.print("  [yellow][warn][/] No gene columns found in targets")
             return None
 
         # Get unique genes with their info
@@ -141,7 +146,7 @@ class DrugCentralNormalizer(BaseNormalizer):
             )
 
         df_genes.write_parquet(dest)
-        print(f"  [normalized] genes: {len(df_genes):,} rows → {dest.name}")
+        console.print(f"    [green]✓[/] genes: {len(df_genes):,} rows → {dest.name}")
         return dest
 
     def _normalize_interactions(self) -> Path | None:
@@ -190,5 +195,5 @@ class DrugCentralNormalizer(BaseNormalizer):
             )
 
         df.write_parquet(dest)
-        print(f"  [normalized] interactions: {len(df):,} rows → {dest.name}")
+        console.print(f"    [green]✓[/] interactions: {len(df):,} rows → {dest.name}")
         return dest

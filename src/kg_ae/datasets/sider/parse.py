@@ -7,8 +7,12 @@ Parses raw SIDER TSV files to bronze Parquet format.
 from pathlib import Path
 
 import polars as pl
+from rich.console import Console
+from rich.table import Table
 
 from kg_ae.datasets.base import BaseParser
+
+console = Console()
 
 
 class SiderParser(BaseParser):
@@ -23,6 +27,7 @@ class SiderParser(BaseParser):
         Returns:
             Dict mapping table names to Parquet file paths
         """
+        console.print("[bold cyan]SIDER Parser[/]")
         results = {}
 
         # Parse drug names
@@ -39,6 +44,15 @@ class SiderParser(BaseParser):
         freq_path = self._parse_frequencies()
         if freq_path:
             results["frequencies"] = freq_path
+
+        # Summary table
+        if results:
+            table = Table(title="SIDER Parse Summary", show_header=True)
+            table.add_column("Table", style="cyan")
+            table.add_column("File", style="dim")
+            for name, path in results.items():
+                table.add_row(name, path.name)
+            console.print(table)
 
         return results
 
@@ -60,7 +74,7 @@ class SiderParser(BaseParser):
         )
 
         df.write_parquet(dest)
-        print(f"  [parsed] drug_names: {len(df):,} rows → {dest.name}")
+        console.print(f"    [green]✓[/] drug_names: {len(df):,} rows")
         return dest
 
     def _parse_side_effects(self) -> Path | None:
@@ -89,7 +103,7 @@ class SiderParser(BaseParser):
         )
 
         df.write_parquet(dest)
-        print(f"  [parsed] side_effects: {len(df):,} rows → {dest.name}")
+        console.print(f"    [green]✓[/] side_effects: {len(df):,} rows")
         return dest
 
     def _parse_frequencies(self) -> Path | None:
@@ -123,5 +137,5 @@ class SiderParser(BaseParser):
         )
 
         df.write_parquet(dest)
-        print(f"  [parsed] frequencies: {len(df):,} rows → {dest.name}")
+        console.print(f"    [green]✓[/] frequencies: {len(df):,} rows")
         return dest

@@ -8,8 +8,12 @@ Filters to Homo sapiens only.
 from pathlib import Path
 
 import polars as pl
+from rich.console import Console
+from rich.table import Table
 
 from kg_ae.datasets.base import BaseNormalizer
+
+console = Console()
 
 
 class ReactomeNormalizer(BaseNormalizer):
@@ -24,6 +28,7 @@ class ReactomeNormalizer(BaseNormalizer):
         Returns:
             Dict mapping table names to silver Parquet paths
         """
+        console.print("[bold cyan]Reactome Normalizer[/]")
         results = {}
 
         # Normalize pathways (human only)
@@ -40,6 +45,15 @@ class ReactomeNormalizer(BaseNormalizer):
         hierarchy_path = self._normalize_hierarchy()
         if hierarchy_path:
             results["hierarchy"] = hierarchy_path
+
+        # Summary table
+        if results:
+            table = Table(title="Reactome Normalize Summary", show_header=True)
+            table.add_column("Table", style="cyan")
+            table.add_column("File", style="dim")
+            for name, path in results.items():
+                table.add_row(name, path.name)
+            console.print(table)
 
         return results
 
@@ -65,7 +79,7 @@ class ReactomeNormalizer(BaseNormalizer):
         }).select(["reactome_id", "label"])
 
         df.write_parquet(dest)
-        print(f"  [normalized] pathways: {len(df):,} rows → {dest.name}")
+        console.print(f"    [green]✓[/] pathways: {len(df):,} rows")
         return dest
 
     def _normalize_gene_pathways(self) -> Path | None:
@@ -101,7 +115,7 @@ class ReactomeNormalizer(BaseNormalizer):
         df = df.unique(subset=["uniprot_id", "reactome_id"])
 
         df.write_parquet(dest)
-        print(f"  [normalized] gene_pathways: {len(df):,} rows → {dest.name}")
+        console.print(f"    [green]✓[/] gene_pathways: {len(df):,} rows")
         return dest
 
     def _normalize_hierarchy(self) -> Path | None:
@@ -136,5 +150,5 @@ class ReactomeNormalizer(BaseNormalizer):
         })
 
         df.write_parquet(dest)
-        print(f"  [normalized] hierarchy: {len(df):,} rows → {dest.name}")
+        console.print(f"    [green]✓[/] hierarchy: {len(df):,} rows")
         return dest

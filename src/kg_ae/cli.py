@@ -2,6 +2,7 @@
 Command-line interface for kg_ae.
 
 Commands:
+- etl: Interactive ETL pipeline runner
 - build-kg: Run ETL pipelines to build the knowledge graph
 - query: Query the graph for drug-AE relationships
 - explain: Generate mechanistic explanations for drug-AE pairs
@@ -28,28 +29,68 @@ def init_db():
 
     console.print("[bold blue]Initializing database schema...[/]")
     init_schema()
-    console.print("[bold green]✓ Schema created successfully[/]")
+    console.print("[bold green]Done. Schema created successfully[/]")
+
+
+@app.command()
+def etl(
+    interactive: bool = typer.Option(
+        True, "--interactive/--batch", "-i/-b",
+        help="Interactive mode with live dashboard"
+    ),
+    dataset: str | None = typer.Option(
+        None, "--dataset", "-d", help="Run specific dataset only"
+    ),
+    tier: int | None = typer.Option(
+        None, "--tier", "-t", help="Run specific tier (1-4)"
+    ),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Force re-download/re-process"
+    ),
+):
+    """Run ETL pipeline with live status dashboard."""
+    from kg_ae.etl.runner import ETLRunner
+
+    runner = ETLRunner()
+
+    if interactive and not dataset and not tier:
+        runner.run_interactive()
+    elif dataset:
+        runner.run_dataset(dataset, include_deps=True, force=force)
+    elif tier:
+        runner.run_tier(tier, force=force)
+    else:
+        runner.run_all(force=force)
 
 
 @app.command()
 def download(
-    source: str = typer.Argument(..., help="Data source to download (e.g., sider, drugcentral)"),
-    force: bool = typer.Option(False, "--force", "-f", help="Re-download even if exists"),
+    source: str = typer.Argument(
+        ..., help="Data source to download (e.g., sider, drugcentral)"
+    ),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Re-download even if exists"
+    ),
 ):
     """Download raw data from a source."""
-    console.print(f"[bold blue]Downloading {source}...[/]")
-    # TODO: Dispatch to appropriate downloader
-    console.print(f"[yellow]Not implemented yet: download {source}[/]")
+    from kg_ae.etl.runner import ETLRunner
+
+    runner = ETLRunner()
+    runner.run_dataset(source, include_deps=False, force=force, phases=["download"])
 
 
 @app.command()
 def ingest(
     source: str = typer.Argument(..., help="Data source to ingest"),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Force re-process"
+    ),
 ):
     """Parse and load a data source into the graph."""
-    console.print(f"[bold blue]Ingesting {source}...[/]")
-    # TODO: Dispatch to appropriate ETL pipeline
-    console.print(f"[yellow]Not implemented yet: ingest {source}[/]")
+    from kg_ae.etl.runner import ETLRunner
+
+    runner = ETLRunner()
+    runner.run_dataset(source, include_deps=True, force=force)
 
 
 @app.command()

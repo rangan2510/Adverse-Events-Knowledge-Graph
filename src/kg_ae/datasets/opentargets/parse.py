@@ -7,8 +7,12 @@ Parses raw Open Targets Parquet files to bronze format.
 from pathlib import Path
 
 import polars as pl
+from rich.console import Console
+from rich.table import Table
 
 from kg_ae.datasets.base import BaseParser
+
+console = Console()
 
 
 class OpenTargetsParser(BaseParser):
@@ -26,6 +30,7 @@ class OpenTargetsParser(BaseParser):
         Returns:
             Dict mapping table names to Parquet file paths
         """
+        console.print("[bold cyan]Open Targets Parser[/]")
         results = {}
 
         # Parse associations
@@ -43,6 +48,15 @@ class OpenTargetsParser(BaseParser):
         if target_path:
             results["targets"] = target_path
 
+        # Summary table
+        if results:
+            table = Table(title="Open Targets Parse Summary", show_header=True)
+            table.add_column("Table", style="cyan")
+            table.add_column("File", style="dim")
+            for name, path in results.items():
+                table.add_row(name, path.name)
+            console.print(table)
+
         return results
 
     def _parse_associations(self) -> Path | None:
@@ -56,7 +70,7 @@ class OpenTargetsParser(BaseParser):
         # Read all parquet files in directory
         parquet_files = list(src_dir.glob("*.parquet"))
         if not parquet_files:
-            print(f"  [warning] No parquet files in {src_dir}")
+            console.print(f"  [yellow][warning][/] No parquet files in {src_dir}")
             return None
 
         # Use lazy loading for efficiency with large datasets
@@ -70,7 +84,7 @@ class OpenTargetsParser(BaseParser):
         ]).collect()
 
         df.write_parquet(dest)
-        print(f"  [parsed] associations: {len(df):,} rows → {dest.name}")
+        console.print(f"    [green]✓[/] associations: {len(df):,} rows")
         return dest
 
     def _parse_diseases(self) -> Path | None:
@@ -83,7 +97,7 @@ class OpenTargetsParser(BaseParser):
 
         parquet_files = list(src_dir.glob("*.parquet"))
         if not parquet_files:
-            print(f"  [warning] No parquet files in {src_dir}")
+            console.print(f"  [yellow][warning][/] No parquet files in {src_dir}")
             return None
 
         df = pl.scan_parquet(src_dir / "*.parquet")
@@ -98,7 +112,7 @@ class OpenTargetsParser(BaseParser):
         ]).collect()
 
         df.write_parquet(dest)
-        print(f"  [parsed] diseases: {len(df):,} rows → {dest.name}")
+        console.print(f"    [green]✓[/] diseases: {len(df):,} rows")
         return dest
 
     def _parse_targets(self) -> Path | None:
@@ -111,7 +125,7 @@ class OpenTargetsParser(BaseParser):
 
         parquet_files = list(src_dir.glob("*.parquet"))
         if not parquet_files:
-            print(f"  [warning] No parquet files in {src_dir}")
+            console.print(f"  [yellow][warning][/] No parquet files in {src_dir}")
             return None
 
         df = pl.scan_parquet(src_dir / "*.parquet")
@@ -126,5 +140,5 @@ class OpenTargetsParser(BaseParser):
         ]).collect()
 
         df.write_parquet(dest)
-        print(f"  [parsed] targets: {len(df):,} rows → {dest.name}")
+        console.print(f"    [green]✓[/] targets: {len(df):,} rows")
         return dest

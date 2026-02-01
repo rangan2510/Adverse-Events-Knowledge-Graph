@@ -18,20 +18,20 @@ uv run kg-ae init-db       # Create database schema
 
 ## ETL Pipeline
 
-Each data source follows: **download → parse → normalize → load**
+Interactive pipeline with live status dashboard. See [docs/etl-guide.md](docs/etl-guide.md) for full details.
 
 ```bash
-# SIDER: Drug → Adverse Event
-uv run python -c "from kg_ae.datasets.sider import *; SIDERDownloader().download(); SIDERParser().parse(); SIDERNormalizer().normalize(); SIDERLoader().load()"
+# Interactive mode with live dashboard
+uv run python -m kg_ae.cli etl
 
-# DrugCentral: Drug → Gene
-uv run python -c "from kg_ae.datasets.drugcentral import *; DrugCentralDownloader().download(); DrugCentralParser().parse(); DrugCentralNormalizer().normalize(); DrugCentralLoader().load()"
+# Run specific dataset
+uv run python -m kg_ae.cli etl --dataset sider
 
-# Reactome: Gene → Pathway
-uv run python -c "from kg_ae.datasets.reactome import *; ReactomeDownloader().download(); ReactomeParser().parse(); ReactomeNormalizer().normalize(); ReactomeLoader().load()"
+# Run by tier (1=foundational, 2=extensions, 3=associations, 4=advanced)
+uv run python -m kg_ae.cli etl --tier 1
 
-# Open Targets: Gene → Disease
-uv run python -c "from kg_ae.datasets.opentargets import *; OpenTargetsDownloader().download(); OpenTargetsParser().parse(); OpenTargetsNormalizer().normalize(); OpenTargetsLoader().load()"
+# Batch mode (no prompts)
+uv run python -m kg_ae.cli etl --batch --force
 ```
 
 ## Data Directories
@@ -67,6 +67,10 @@ WHERE MATCH(d-(hc1)->c1-(cg)->g)
 ORDER BY c2.strength_score DESC
 ```
 
-## Project Plan
+## Documentation
 
-See [docs/milestones.md](docs/milestones.md) for architecture and roadmap.
+| Document | Description |
+|----------|-------------|
+| [docs/data-sources.md](docs/data-sources.md) | Complete reference for all 13 data sources |
+| [docs/etl-guide.md](docs/etl-guide.md) | ETL pipeline usage and commands |
+| [docs/setup.md](docs/setup.md) | Database and environment setup |

@@ -9,7 +9,12 @@ import os
 from datetime import datetime
 from pathlib import Path
 
+from rich.console import Console
+from rich.table import Table
+
 from kg_ae.datasets.base import BaseDownloader, DatasetMetadata
+
+console = Console()
 
 
 class OpenTargetsDownloader(BaseDownloader):
@@ -45,6 +50,7 @@ class OpenTargetsDownloader(BaseDownloader):
         Returns:
             List of metadata for downloaded files
         """
+        console.print("[bold cyan]Open Targets Downloader[/]")
         results = []
 
         for dataset_name, info in self.DATASETS.items():
@@ -54,7 +60,7 @@ class OpenTargetsDownloader(BaseDownloader):
                 # Check if parquet files exist
                 parquet_files = list(dataset_dir.glob("*.parquet"))
                 if parquet_files:
-                    print(f"  [skip] {dataset_name} exists ({len(parquet_files)} files)")
+                    console.print(f"  [dim][skip] {dataset_name} (cached, {len(parquet_files)} files)[/]")
                     results.append(
                         DatasetMetadata(
                             source_key=self.source_key,
@@ -68,12 +74,12 @@ class OpenTargetsDownloader(BaseDownloader):
                     )
                     continue
 
-            print(f"  [download] {dataset_name}...")
+            console.print(f"  [yellow]Downloading[/] {dataset_name}...")
             self._download_dataset(dataset_name, dataset_dir)
             
             parquet_files = list(dataset_dir.glob("*.parquet"))
             total_size = sum(f.stat().st_size for f in parquet_files)
-            print(f"  [done] {dataset_name} ({len(parquet_files)} files, {total_size:,} bytes)")
+            console.print(f"    [green]✓[/] {dataset_name} ({len(parquet_files)} files, {total_size:,} bytes)")
 
             results.append(
                 DatasetMetadata(
@@ -86,6 +92,14 @@ class OpenTargetsDownloader(BaseDownloader):
                     license_name=self.license_name,
                 )
             )
+
+        # Summary table
+        table = Table(title="Open Targets Download Summary", show_header=True)
+        table.add_column("Dataset", style="cyan")
+        table.add_column("Status", justify="center")
+        for r in results:
+            table.add_row(r.local_path.name, "[green]✓[/]")
+        console.print(table)
 
         return results
 
@@ -124,12 +138,12 @@ class OpenTargetsDownloader(BaseDownloader):
         try:
             subprocess.run(cmd, check=True, capture_output=True, text=True)
         except subprocess.CalledProcessError as e:
-            print(f"  [error] wget failed: {e.stderr}")
+            console.print(f"  [red][error][/] wget failed: {e.stderr}")
             # Fallback: try with httpx for individual files
             self._download_with_httpx(url, dest_dir)
         except FileNotFoundError:
             # wget not available, use httpx
-            print("  [info] wget not found, using httpx...")
+            console.print("  [yellow][info][/] wget not found, using httpx...")
             self._download_with_httpx(url, dest_dir)
 
     def _download_with_httpx(self, base_url: str, dest_dir: Path) -> None:
@@ -148,7 +162,7 @@ class OpenTargetsDownloader(BaseDownloader):
             response = httpx.get(base_url, timeout=60.0, follow_redirects=True)
             response.raise_for_status()
         except Exception as e:
-            print(f"  [error] Failed to list directory: {e}")
+            console.print(f"  [red][error][/] Failed to list directory: {e}")
             return
 
         # Parse HTML to find parquet files
@@ -162,5 +176,5 @@ class OpenTargetsDownloader(BaseDownloader):
                 file_path = dest_dir / href
                 
                 if not file_path.exists():
-                    print(f"    [fetch] {href}...")
+                    console.print(f"    [dim]Fetching[/] {href}...")
                     self._fetch_url(file_url, file_path)

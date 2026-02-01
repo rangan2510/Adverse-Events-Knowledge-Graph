@@ -7,8 +7,12 @@ Loads normalized Reactome data into SQL Server graph tables.
 import json
 
 import polars as pl
+from rich.console import Console
+from rich.table import Table
 
 from kg_ae.datasets.base import BaseLoader
+
+console = Console()
 
 
 class ReactomeLoader(BaseLoader):
@@ -24,6 +28,7 @@ class ReactomeLoader(BaseLoader):
         Returns:
             Dict with counts of loaded entities
         """
+        console.print("[bold cyan]Reactome Loader[/]")
         results = {}
 
         # Register dataset
@@ -43,6 +48,14 @@ class ReactomeLoader(BaseLoader):
         gene_pathway_count = self._load_gene_pathways(dataset_id)
         results["gene_pathways"] = gene_pathway_count
 
+        # Summary table
+        table = Table(title="Reactome Load Summary", show_header=True)
+        table.add_column("Entity", style="cyan")
+        table.add_column("Count", justify="right", style="green")
+        for entity, count in results.items():
+            table.add_row(entity.replace('_', ' ').title(), f"{count:,}")
+        console.print(table)
+
         return results
 
     def _load_pathways(self, dataset_id: int) -> int:
@@ -51,7 +64,7 @@ class ReactomeLoader(BaseLoader):
         """
         pathways_path = self.silver_dir / "pathways.parquet"
         if not pathways_path.exists():
-            print("  [skip] No pathways.parquet found")
+            console.print("  [dim][skip] No pathways.parquet found[/]")
             return 0
 
         df = pl.read_parquet(pathways_path)
@@ -83,7 +96,7 @@ class ReactomeLoader(BaseLoader):
             )
             count += 1
 
-        print(f"  [loaded] pathways: {count:,}")
+        console.print(f"    [green]✓[/] Pathways: {count:,}")
         return count
 
     def _load_gene_pathways(self, dataset_id: int) -> int:
@@ -94,7 +107,7 @@ class ReactomeLoader(BaseLoader):
         """
         gene_pathways_path = self.silver_dir / "gene_pathways.parquet"
         if not gene_pathways_path.exists():
-            print("  [skip] No gene_pathways.parquet found")
+            console.print("  [dim][skip] No gene_pathways.parquet found[/]")
             return 0
 
         df = pl.read_parquet(gene_pathways_path)
@@ -177,9 +190,9 @@ class ReactomeLoader(BaseLoader):
 
             count += 1
 
-        print(f"  [loaded] gene_pathways: {count:,}")
+        console.print(f"    [green]✓[/] Gene pathways: {count:,}")
         if skipped_no_gene > 0:
-            print(f"  [skipped] {skipped_no_gene:,} rows - gene not found in kg.Gene")
+            console.print(f"    [yellow]Skipped[/]: {skipped_no_gene:,} rows - gene not found")
         if skipped_no_pathway > 0:
-            print(f"  [skipped] {skipped_no_pathway:,} rows - pathway not found")
+            console.print(f"    [yellow]Skipped[/]: {skipped_no_pathway:,} rows - pathway not found")
         return count

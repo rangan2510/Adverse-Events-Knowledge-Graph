@@ -7,8 +7,12 @@ Parses raw DrugCentral files to bronze Parquet format.
 from pathlib import Path
 
 import polars as pl
+from rich.console import Console
+from rich.table import Table
 
 from kg_ae.datasets.base import BaseParser
+
+console = Console()
 
 
 class DrugCentralParser(BaseParser):
@@ -23,7 +27,9 @@ class DrugCentralParser(BaseParser):
         Returns:
             Dict mapping table names to Parquet file paths
         """
+        console.print("[bold cyan]DrugCentral Parser[/]")
         results = {}
+        stats = []
 
         # Parse drug structures (ID mapping)
         structures_path = self._parse_structures()
@@ -54,7 +60,7 @@ class DrugCentralParser(BaseParser):
         df = pl.read_csv(src, separator="\t")
 
         df.write_parquet(dest)
-        print(f"  [parsed] structures: {len(df):,} rows → {dest.name}")
+        console.print(f"    [green]✓[/] structures: {len(df):,} rows → {dest.name}")
         return dest
 
     def _parse_targets(self) -> Path | None:
@@ -69,7 +75,7 @@ class DrugCentralParser(BaseParser):
         df = pl.read_csv(src, separator="\t")
 
         df.write_parquet(dest)
-        print(f"  [parsed] targets: {len(df):,} rows → {dest.name}")
+        console.print(f"    [green]✓[/] targets: {len(df):,} rows → {dest.name}")
         return dest
 
     def _parse_approved(self) -> Path | None:
@@ -84,5 +90,5 @@ class DrugCentralParser(BaseParser):
         df = pl.read_csv(src)
 
         df.write_parquet(dest)
-        print(f"  [parsed] approved: {len(df):,} rows → {dest.name}")
+        console.print(f"    [green]✓[/] approved: {len(df):,} rows → {dest.name}")
         return dest

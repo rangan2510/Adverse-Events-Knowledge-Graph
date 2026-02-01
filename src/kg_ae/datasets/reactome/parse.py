@@ -7,8 +7,12 @@ Parses raw Reactome files to bronze Parquet format.
 from pathlib import Path
 
 import polars as pl
+from rich.console import Console
+from rich.table import Table
 
 from kg_ae.datasets.base import BaseParser
+
+console = Console()
 
 
 class ReactomeParser(BaseParser):
@@ -23,6 +27,7 @@ class ReactomeParser(BaseParser):
         Returns:
             Dict mapping table names to Parquet file paths
         """
+        console.print("[bold cyan]Reactome Parser[/]")
         results = {}
 
         # Parse pathways (ID -> name)
@@ -45,6 +50,15 @@ class ReactomeParser(BaseParser):
         if ensembl_path:
             results["ensembl_pathways"] = ensembl_path
 
+        # Summary table
+        if results:
+            table = Table(title="Reactome Parse Summary", show_header=True)
+            table.add_column("Table", style="cyan")
+            table.add_column("File", style="dim")
+            for name, path in results.items():
+                table.add_row(name, path.name)
+            console.print(table)
+
         return results
 
     def _parse_pathways(self) -> Path | None:
@@ -64,7 +78,7 @@ class ReactomeParser(BaseParser):
         )
 
         df.write_parquet(dest)
-        print(f"  [parsed] pathways: {len(df):,} rows → {dest.name}")
+        console.print(f"    [green]✓[/] pathways: {len(df):,} rows")
         return dest
 
     def _parse_hierarchy(self) -> Path | None:
@@ -84,7 +98,7 @@ class ReactomeParser(BaseParser):
         )
 
         df.write_parquet(dest)
-        print(f"  [parsed] hierarchy: {len(df):,} rows → {dest.name}")
+        console.print(f"    [green]✓[/] hierarchy: {len(df):,} rows")
         return dest
 
     def _parse_uniprot_mapping(self) -> Path | None:
@@ -111,7 +125,7 @@ class ReactomeParser(BaseParser):
         )
 
         df.write_parquet(dest)
-        print(f"  [parsed] uniprot_pathways: {len(df):,} rows → {dest.name}")
+        console.print(f"    [green]✓[/] uniprot_pathways: {len(df):,} rows")
         return dest
 
     def _parse_ensembl_mapping(self) -> Path | None:
@@ -138,5 +152,5 @@ class ReactomeParser(BaseParser):
         )
 
         df.write_parquet(dest)
-        print(f"  [parsed] ensembl_pathways: {len(df):,} rows → {dest.name}")
+        console.print(f"    [green]✓[/] ensembl_pathways: {len(df):,} rows")
         return dest

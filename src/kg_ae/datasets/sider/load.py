@@ -7,9 +7,13 @@ Loads normalized SIDER data into SQL Server kg.* tables.
 import json
 
 import polars as pl
+from rich.console import Console
+from rich.table import Table
 
 from kg_ae.config import settings
 from kg_ae.db import execute, get_connection
+
+console = Console()
 
 
 class SiderLoader:
@@ -40,11 +44,12 @@ class SiderLoader:
         Returns:
             Dict with row counts per table
         """
+        console.print("[bold cyan]SIDER Loader[/]")
         counts = {}
 
         # 1. Register dataset
         dataset_id = self._register_dataset()
-        print(f"  [registered] dataset_id={dataset_id}")
+        console.print(f"  [dim]Registered dataset_id={dataset_id}[/]")
 
         # 2. Load drugs
         drug_count = self._load_drugs()
@@ -57,6 +62,14 @@ class SiderLoader:
         # 4. Load drug-AE associations (claims + evidence + edges)
         claim_count = self._load_drug_ae_claims(dataset_id)
         counts["claims"] = claim_count
+
+        # Summary table
+        table = Table(title="SIDER Load Summary", show_header=True)
+        table.add_column("Entity", style="cyan")
+        table.add_column("Count", justify="right", style="green")
+        for entity, count in counts.items():
+            table.add_row(entity.title(), f"{count:,}")
+        console.print(table)
 
         return counts
 
@@ -134,7 +147,7 @@ class SiderLoader:
 
             conn.commit()
 
-        print(f"  [loaded] kg.Drug: {inserted:,} new drugs")
+        console.print(f"    [green]✓[/] Drugs: {inserted:,} new")
         return inserted
 
     def _load_adverse_events(self) -> int:
@@ -168,7 +181,7 @@ class SiderLoader:
 
             conn.commit()
 
-        print(f"  [loaded] kg.AdverseEvent: {inserted:,} new AEs")
+        console.print(f"    [green]✓[/] Adverse Events: {inserted:,} new")
         return inserted
 
     def _load_drug_ae_claims(self, dataset_id: int) -> int:
@@ -287,9 +300,8 @@ class SiderLoader:
                 # Commit in batches
                 if claims_created % 1000 == 0:
                     conn.commit()
-                    print(f"    ... {claims_created:,} claims created")
 
             conn.commit()
 
-        print(f"  [loaded] claims: {claims_created:,} drug-AE associations")
+        console.print(f"    [green]✓[/] Claims: {claims_created:,} drug-AE associations")
         return claims_created

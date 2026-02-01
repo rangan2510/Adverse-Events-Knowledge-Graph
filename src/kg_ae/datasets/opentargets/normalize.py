@@ -7,8 +7,12 @@ Converts bronze Parquet to silver with canonical IDs.
 from pathlib import Path
 
 import polars as pl
+from rich.console import Console
+from rich.table import Table
 
 from kg_ae.datasets.base import BaseNormalizer
+
+console = Console()
 
 
 class OpenTargetsNormalizer(BaseNormalizer):
@@ -23,6 +27,7 @@ class OpenTargetsNormalizer(BaseNormalizer):
         Returns:
             Dict mapping table names to silver Parquet paths
         """
+        console.print("[bold cyan]Open Targets Normalizer[/]")
         results = {}
 
         # Normalize diseases
@@ -39,6 +44,15 @@ class OpenTargetsNormalizer(BaseNormalizer):
         genes_path = self._normalize_genes()
         if genes_path:
             results["genes"] = genes_path
+
+        # Summary table
+        if results:
+            table = Table(title="Open Targets Normalize Summary", show_header=True)
+            table.add_column("Table", style="cyan")
+            table.add_column("File", style="dim")
+            for name, path in results.items():
+                table.add_row(name, path.name)
+            console.print(table)
 
         return results
 
@@ -84,7 +98,7 @@ class OpenTargetsNormalizer(BaseNormalizer):
         ])
 
         df.write_parquet(dest)
-        print(f"  [normalized] diseases: {len(df):,} rows → {dest.name}")
+        console.print(f"    [green]✓[/] diseases: {len(df):,} rows")
         return dest
 
     def _normalize_associations(self) -> Path | None:
@@ -109,7 +123,7 @@ class OpenTargetsNormalizer(BaseNormalizer):
         df = df.filter(pl.col("score") > 0.1)
 
         df.write_parquet(dest)
-        print(f"  [normalized] associations: {len(df):,} rows → {dest.name}")
+        console.print(f"    [green]✓[/] associations: {len(df):,} rows")
         return dest
 
     def _normalize_genes(self) -> Path | None:
@@ -153,5 +167,5 @@ class OpenTargetsNormalizer(BaseNormalizer):
         ])
 
         df.write_parquet(dest)
-        print(f"  [normalized] genes: {len(df):,} rows → {dest.name}")
+        console.print(f"    [green]✓[/] genes: {len(df):,} rows")
         return dest

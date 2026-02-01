@@ -7,8 +7,12 @@ Loads normalized Open Targets data into SQL Server graph tables.
 import json
 
 import polars as pl
+from rich.console import Console
+from rich.table import Table
 
 from kg_ae.datasets.base import BaseLoader
+
+console = Console()
 
 
 class OpenTargetsLoader(BaseLoader):
@@ -24,6 +28,7 @@ class OpenTargetsLoader(BaseLoader):
         Returns:
             Dict with counts of loaded entities
         """
+        console.print("[bold cyan]Open Targets Loader[/]")
         results = {}
 
         # Register dataset
@@ -47,6 +52,14 @@ class OpenTargetsLoader(BaseLoader):
         assoc_count = self._load_associations(dataset_id)
         results["associations"] = assoc_count
 
+        # Summary table
+        table = Table(title="Open Targets Load Summary", show_header=True)
+        table.add_column("Entity", style="cyan")
+        table.add_column("Count", justify="right", style="green")
+        for entity, count in results.items():
+            table.add_row(entity.replace('_', ' ').title(), f"{count:,}")
+        console.print(table)
+
         return results
 
     def _load_diseases(self, dataset_id: int) -> int:
@@ -55,7 +68,7 @@ class OpenTargetsLoader(BaseLoader):
         """
         diseases_path = self.silver_dir / "diseases.parquet"
         if not diseases_path.exists():
-            print("  [skip] No diseases.parquet found")
+            console.print("  [dim][skip] No diseases.parquet found[/]")
             return 0
 
         df = pl.read_parquet(diseases_path)
@@ -129,7 +142,7 @@ class OpenTargetsLoader(BaseLoader):
             )
             count += 1
 
-        print(f"  [loaded] diseases: {count:,}")
+        console.print(f"    [green]✓[/] Diseases: {count:,}")
         return count
 
     def _update_genes(self, dataset_id: int) -> int:
@@ -138,7 +151,7 @@ class OpenTargetsLoader(BaseLoader):
         """
         genes_path = self.silver_dir / "genes.parquet"
         if not genes_path.exists():
-            print("  [skip] No genes.parquet found")
+            console.print("  [dim][skip] No genes.parquet found[/]")
             return 0
 
         df = pl.read_parquet(genes_path)
@@ -188,7 +201,7 @@ class OpenTargetsLoader(BaseLoader):
             
             count += 1
 
-        print(f"  [updated] genes: {count:,}")
+        console.print(f"    [green]✓[/] Genes updated: {count:,}")
         return count
 
     def _load_associations(self, dataset_id: int) -> int:
@@ -199,7 +212,7 @@ class OpenTargetsLoader(BaseLoader):
         """
         associations_path = self.silver_dir / "associations.parquet"
         if not associations_path.exists():
-            print("  [skip] No associations.parquet found")
+            console.print("  [dim][skip] No associations.parquet found[/]")
             return 0
 
         df = pl.read_parquet(associations_path)
@@ -284,9 +297,9 @@ class OpenTargetsLoader(BaseLoader):
 
             count += 1
 
-        print(f"  [loaded] associations: {count:,}")
+        console.print(f"    [green]✓[/] Associations: {count:,}")
         if skipped_no_gene > 0:
-            print(f"  [skipped] {skipped_no_gene:,} rows - gene not found in kg.Gene")
+            console.print(f"    [yellow]Skipped[/]: {skipped_no_gene:,} rows - gene not found")
         if skipped_no_disease > 0:
-            print(f"  [skipped] {skipped_no_disease:,} rows - disease not found")
+            console.print(f"    [yellow]Skipped[/]: {skipped_no_disease:,} rows - disease not found")
         return count

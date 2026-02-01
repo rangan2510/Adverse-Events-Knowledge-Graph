@@ -6,7 +6,12 @@ Downloads drug identity and target data from DrugCentral.
 
 from datetime import UTC, datetime
 
+from rich.console import Console
+from rich.table import Table
+
 from kg_ae.datasets.base import BaseDownloader, DatasetMetadata
+
+console = Console()
 
 
 class DrugCentralDownloader(BaseDownloader):
@@ -46,6 +51,7 @@ class DrugCentralDownloader(BaseDownloader):
         Returns:
             List of metadata for downloaded files
         """
+        console.print("[bold cyan]DrugCentral Downloader[/]")
         results = []
 
         # Download main files
@@ -54,13 +60,14 @@ class DrugCentralDownloader(BaseDownloader):
             url = f"{self.base_url}/{info['url']}"
 
             if dest.exists() and not force:
-                print(f"  [skip] {filename} already exists")
+                console.print(f"  [dim][skip] {filename} (cached)[/]")
                 sha256 = self._compute_sha256(dest)
             else:
-                print(f"  [download] {filename}...")
+                console.print(f"  Downloading {filename}...")
                 self._fetch_url(url, dest)
                 sha256 = self._compute_sha256(dest)
-                print(f"  [done] {filename} ({dest.stat().st_size:,} bytes)")
+                size_kb = dest.stat().st_size / 1024
+                console.print(f"    [green]✓[/] {filename} ({size_kb:.1f} KB)")
 
             results.append(
                 DatasetMetadata(
@@ -80,13 +87,14 @@ class DrugCentralDownloader(BaseDownloader):
             url = info["url"]
 
             if dest.exists() and not force:
-                print(f"  [skip] {filename} already exists")
+                console.print(f"  [dim][skip] {filename} (cached)[/]")
                 sha256 = self._compute_sha256(dest)
             else:
-                print(f"  [download] {filename}...")
+                console.print(f"  Downloading {filename}...")
                 self._fetch_url(url, dest)
                 sha256 = self._compute_sha256(dest)
-                print(f"  [done] {filename} ({dest.stat().st_size:,} bytes)")
+                size_kb = dest.stat().st_size / 1024
+                console.print(f"    [green]✓[/] {filename} ({size_kb:.1f} KB)")
 
             results.append(
                 DatasetMetadata(

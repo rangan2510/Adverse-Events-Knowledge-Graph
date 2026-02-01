@@ -18,38 +18,39 @@ CREATE DATABASE kg_ae;
 
 Deploy schema:
 ```bash
-uv run kg-ae init-db
+uv run python -m kg_ae.cli init-db
 ```
 
-## ETL Order
+## ETL Pipeline
 
-Data sources should be loaded in this order (dependency chain):
+The ETL runner handles dependency ordering automatically. See [etl-guide.md](etl-guide.md) for full documentation.
 
-1. **SIDER** - establishes Drug and AdverseEvent entities
-2. **DrugCentral** - adds Gene entities and Drug→Gene edges  
-3. **Reactome** - adds Pathway entities and Gene→Pathway edges
-4. **Open Targets** - adds Disease entities and Gene→Disease edges
-
-### Load All
+### Interactive Mode (Recommended)
 
 ```bash
-uv run python scripts/load_all.py
+uv run python -m kg_ae.cli etl
 ```
 
-### Load Individual Sources
+Live dashboard shows status for all 13 datasets across 4 tiers:
+- Tier 1: HGNC, DrugCentral (foundational)
+- Tier 2: Open Targets, Reactome, GtoPdb (extensions)
+- Tier 3: SIDER, openFDA, CTD, STRING, ClinGen, HPO (associations)
+- Tier 4: ChEMBL, FAERS (advanced)
+
+### Batch Mode
 
 ```bash
-# SIDER (Drug → Adverse Event)
-uv run python -c "from kg_ae.datasets.sider import *; SIDERDownloader().download(); SIDERParser().parse(); SIDERNormalizer().normalize(); SIDERLoader().load()"
+# Run everything
+uv run python -m kg_ae.cli etl --batch
 
-# DrugCentral (Drug → Gene)
-uv run python -c "from kg_ae.datasets.drugcentral import *; DrugCentralDownloader().download(); DrugCentralParser().parse(); DrugCentralNormalizer().normalize(); DrugCentralLoader().load()"
+# Run specific tier
+uv run python -m kg_ae.cli etl --tier 1
 
-# Reactome (Gene → Pathway)
-uv run python -c "from kg_ae.datasets.reactome import *; ReactomeDownloader().download(); ReactomeParser().parse(); ReactomeNormalizer().normalize(); ReactomeLoader().load()"
+# Run specific dataset (with dependencies)
+uv run python -m kg_ae.cli etl --dataset sider
 
-# Open Targets (Gene → Disease)
-uv run python -c "from kg_ae.datasets.opentargets import *; OpenTargetsDownloader().download(); OpenTargetsParser().parse(); OpenTargetsNormalizer().normalize(); OpenTargetsLoader().load()"
+# Force re-download
+uv run python -m kg_ae.cli etl --batch --force
 ```
 
 ## Verify

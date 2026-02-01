@@ -7,8 +7,12 @@ Transforms bronze Parquet files to silver format with canonical IDs.
 from pathlib import Path
 
 import polars as pl
+from rich.console import Console
+from rich.table import Table
 
 from kg_ae.datasets.base import BaseNormalizer
+
+console = Console()
 
 
 class SiderNormalizer(BaseNormalizer):
@@ -28,6 +32,7 @@ class SiderNormalizer(BaseNormalizer):
         Returns:
             Dict mapping table names to output file paths
         """
+        console.print("[bold cyan]SIDER Normalizer[/]")
         results = {}
 
         # Load bronze data
@@ -46,6 +51,14 @@ class SiderNormalizer(BaseNormalizer):
         # 3. Normalize drug-AE pairs with frequency data
         pairs_path = self._normalize_drug_ae_pairs(side_effects, frequencies)
         results["drug_ae_pairs"] = pairs_path
+
+        # Summary table
+        table = Table(title="SIDER Normalize Summary", show_header=True)
+        table.add_column("Table", style="cyan")
+        table.add_column("File", style="dim")
+        for name, path in results.items():
+            table.add_row(name, path.name)
+        console.print(table)
 
         return results
 
@@ -69,7 +82,7 @@ class SiderNormalizer(BaseNormalizer):
         ]).unique(subset=["stitch_id"])
 
         drugs.write_parquet(dest)
-        print(f"  [normalized] drugs: {len(drugs):,} unique drugs → {dest.name}")
+        console.print(f"    [green]✓[/] drugs: {len(drugs):,} unique drugs")
         return dest
 
     def _normalize_adverse_events(self, side_effects: pl.DataFrame) -> Path:
@@ -95,7 +108,7 @@ class SiderNormalizer(BaseNormalizer):
         )
 
         ae_terms.write_parquet(dest)
-        print(f"  [normalized] adverse_events: {len(ae_terms):,} unique AEs → {dest.name}")
+        console.print(f"    [green]✓[/] adverse_events: {len(ae_terms):,} unique AEs")
         return dest
 
     def _normalize_drug_ae_pairs(
@@ -151,5 +164,5 @@ class SiderNormalizer(BaseNormalizer):
         )
 
         pairs.write_parquet(dest)
-        print(f"  [normalized] drug_ae_pairs: {len(pairs):,} associations → {dest.name}")
+        console.print(f"    [green]✓[/] drug_ae_pairs: {len(pairs):,} associations")
         return dest

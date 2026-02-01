@@ -7,7 +7,12 @@ https://reactome.org/download-data
 
 from datetime import datetime
 
+from rich.console import Console
+from rich.table import Table
+
 from kg_ae.datasets.base import BaseDownloader, DatasetMetadata
+
+console = Console()
 
 
 class ReactomeDownloader(BaseDownloader):
@@ -51,19 +56,20 @@ class ReactomeDownloader(BaseDownloader):
         Returns:
             List of metadata for downloaded files
         """
+        console.print("[bold cyan]Reactome Downloader[/]")
         results = []
 
         for filename, info in self.FILES.items():
             dest = self.raw_dir / filename
 
             if dest.exists() and not force:
-                print(f"  [skip] {filename} exists")
+                console.print(f"  [dim][skip] {filename} (cached)[/]")
                 sha256 = self._compute_sha256(dest)
             else:
-                print(f"  [download] {filename}...")
+                console.print(f"  [yellow]Downloading[/] {filename}...")
                 self._fetch_url(info["url"], dest)
                 sha256 = self._compute_sha256(dest)
-                print(f"  [done] {filename} ({dest.stat().st_size:,} bytes)")
+                console.print(f"    [green]✓[/] {filename} ({dest.stat().st_size:,} bytes)")
 
             results.append(
                 DatasetMetadata(
@@ -77,4 +83,11 @@ class ReactomeDownloader(BaseDownloader):
                 )
             )
 
-        return results
+        # Summary table
+        table = Table(title="Reactome Download Summary", show_header=True)
+        table.add_column("File", style="cyan")
+        table.add_column("Status", justify="center")
+        for r in results:
+            table.add_row(r.local_path.name, "[green]✓[/]")
+        console.print(table)
+

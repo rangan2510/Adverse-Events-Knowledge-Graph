@@ -156,6 +156,15 @@ export_subgraph(nodes, edges, format)    # → JSON or GraphML
 4. **AE terminology mismatch**: Expect resolver/mapping layer between SIDER/FAERS and OAE
 
 # Coding rules
-- command line uses powershell. Powershell uses backticks to escape. Use backticks where needed.
+- Powershell uses backticks to escape. Use backticks where needed.
+- Mind this when executing commands in Powershell, SQL or Python scripts.
+- DO NOT USE any emojis in code, comments, docstrings, or documentation.
 - use `uv` for python package management
 - use `sqlcmd` for running sql scripts
+- Dev machine uses Windows 11 and Powershell 7. 
+- use `rich` for colored terminal output in python scripts.
+   - for loops or longer scripts, try to show verbose progress or completion percentages where possible.
+   - use spinners and progress bars for long running tasks.
+   - use panels and tables to summarize statistics or important information.
+- use `mssql_python` for connecting to sql server from python.
+   - more infroamtion here [https://github.com/microsoft/mssql-python]
