@@ -14,7 +14,7 @@ class LLMConfig:
     planner_url: str = "http://127.0.0.1:8081/v1"
     planner_model: str = "phi4mini"
     planner_temperature: float = 0.1  # Low temp for deterministic tool planning
-    planner_max_tokens: int = 512  # Keep short - just a few tool calls
+    planner_max_tokens: int = 1024  # Allow longer thought + 5 tool calls
     
     # Narrator LLM settings (Phi-4 - larger model for better narration)
     narrator_url: str = "http://127.0.0.1:8082/v1"

@@ -67,11 +67,11 @@ def test_narrator_basic() -> bool:
     """Test narrator can generate medical text."""
     from openai import OpenAI
 
-    console.print("Testing Narrator (MediPhi)...", style="bold blue")
+    console.print("Testing Narrator (Phi-4)...", style="bold blue")
 
     client = OpenAI(base_url="http://127.0.0.1:8082/v1", api_key="x")
     response = client.chat.completions.create(
-        model="mediphi",
+        model="phi4",
         messages=[{"role": "user", "content": "Define hypertension in one sentence."}],
         max_tokens=50,
     )

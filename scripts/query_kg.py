@@ -91,6 +91,7 @@ class ToolResult:
     success: bool
     result: Any = None
     error: str | None = None
+    reason: str | None = None  # Why this tool was called
     
     def to_context(self, max_items: int = 50) -> str:
         """
@@ -286,7 +287,7 @@ def normalize_args(tool_name: str, args: dict) -> dict:
     return result
 
 
-def execute_tool(tool_name: str, args: dict, ctx: ExecutionContext) -> ToolResult:
+def execute_tool(tool_name: str, args: dict, ctx: ExecutionContext, reason: str | None = None) -> ToolResult:
     """Execute a single tool and return result."""
     tool_fn = TOOLS.get(tool_name)
     if tool_fn is None:
@@ -295,6 +296,7 @@ def execute_tool(tool_name: str, args: dict, ctx: ExecutionContext) -> ToolResul
             args=args,
             success=False,
             error=f"Unknown tool: {tool_name}",
+            reason=reason,
         )
     
     # Normalize args (fix planner mistakes like drug_keys -> drug_key)
@@ -337,6 +339,7 @@ def execute_tool(tool_name: str, args: dict, ctx: ExecutionContext) -> ToolResul
             args=subst_args,
             success=True,
             result=result,
+            reason=reason,
         )
     except Exception as e:
         return ToolResult(
@@ -344,6 +347,7 @@ def execute_tool(tool_name: str, args: dict, ctx: ExecutionContext) -> ToolResul
             args=subst_args,
             success=False,
             error=str(e),
+            reason=reason,
         )
 
 
@@ -354,11 +358,13 @@ def execute_plan(plan: ToolPlan, verbose: bool = True) -> list[ToolResult]:
     
     for i, call in enumerate(plan.calls, 1):
         tool_name = call.tool if isinstance(call.tool, str) else call.tool.value
+        reason = call.reason
         
         if verbose:
-            console.print(f"[dim][{i}/{len(plan.calls)}] Executing {tool_name}...[/dim]")
+            reason_str = f" - {reason}" if reason else ""
+            console.print(f"[dim][{i}/{len(plan.calls)}] {tool_name}{reason_str}[/dim]")
         
-        result = execute_tool(tool_name, call.args, ctx)
+        result = execute_tool(tool_name, call.args, ctx, reason=reason)
         results.append(result)
         
         if verbose:

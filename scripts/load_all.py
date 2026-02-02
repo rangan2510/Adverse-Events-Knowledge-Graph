@@ -90,7 +90,7 @@ def load_all():
         Loader().load()
     
     print("\n" + "=" * 60)
-    print("✓ All sources loaded successfully!")
+    print("\u2713 All sources loaded successfully!")
     print("=" * 60)
 
 if __name__ == "__main__":

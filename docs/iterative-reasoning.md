@@ -61,17 +61,20 @@ The iterative reasoning system enables multi-step query refinement where the nar
 - Tools execute and return results
 
 ### 2. Sufficiency Evaluation
-Narrator LLM evaluates whether tool outputs provide sufficient information:
+Narrator LLM evaluates whether tool outputs provide sufficient information.
+
+**Key feature**: The evaluator receives the **list of available tools** so it can make informed decisions about what additional information could be gathered. For each information gap, it suggests which specific tool would fill that gap.
 
 - **SUFFICIENT**: Information is complete, generate final answer
-- **INSUFFICIENT**: Critical gaps exist, need refinement
-- **PARTIALLY_SUFFICIENT**: Basic answer possible but incomplete
+- **INSUFFICIENT**: Critical gaps exist AND tools exist to fill them
+- **PARTIALLY_SUFFICIENT**: Basic answer possible but tools could provide more depth
 
 Evaluation considers:
 - Can the query be answered meaningfully?
 - Are mechanistic pathways present (if relevant)?
 - Is adverse event data available (if relevant)?
 - Is critical context missing?
+- **Which available tools could fill each gap?**
 
 ### 3. Decision Point
 
@@ -94,13 +97,22 @@ Evaluation considers:
 
 ## Pydantic Models
 
+### InformationGap
+```python
+class InformationGap(BaseModel):
+    category: str          # e.g., "mechanism", "pathway", "interaction"
+    description: str       # What information is missing
+    priority: int          # 1=high, 2=medium, 3=low
+    suggested_tool: str | None  # Tool that could fill this gap
+```
+
 ### SufficiencyEvaluation
 ```python
 class SufficiencyEvaluation(BaseModel):
     status: SufficiencyStatus  # sufficient|insufficient|partially_sufficient
     confidence: float  # 0.0-1.0
     reasoning: str
-    information_gaps: list[InformationGap]
+    information_gaps: list[InformationGap]  # Each gap includes suggested_tool
     can_answer_with_current_data: bool
     iteration_count: int
 ```
@@ -208,7 +220,13 @@ Query> quit
 **Sufficiency Evaluation**:
 - Status: `PARTIALLY_SUFFICIENT`
 - Reasoning: "AE data available but no mechanistic explanation"
-- Gaps: `[{category: "mechanism", priority: 1}]`
+- Gaps:
+  ```json
+  [
+    {"category": "mechanism", "description": "No pathway data for AE causation", "priority": 1, "suggested_tool": "get_drug_targets"},
+    {"category": "pathway", "description": "Missing gene-pathway relationships", "priority": 2, "suggested_tool": "get_gene_pathways"}
+  ]
+  ```
 - Can answer: `false`
 
 **Refinement**: "What are the mechanistic pathways through which metformin causes lactic acidosis?"
@@ -224,6 +242,7 @@ Query> quit
 **Sufficiency Evaluation**:
 - Status: `SUFFICIENT`
 - Reasoning: "Complete pathway data + AE associations present"
+- Gaps: `[]` (no gaps - all requested info retrieved)
 - Can answer: `true`
 
 **Final Response**: [Comprehensive answer with mechanistic detail]
@@ -249,8 +268,8 @@ narrator_temperature = 0.3  # Slightly creative narration
 
 ### Token Limits
 ```python
-planner_max_tokens = 2048   # Structured output
-narrator_max_tokens = 4096  # Long-form response
+planner_max_tokens = 512    # Structured output (keep short)
+narrator_max_tokens = 2048  # Long-form response
 ```
 
 ## Integration with Existing Pipeline
@@ -285,28 +304,26 @@ def execute_tools_for_query(query: str):
 
 ### Terminal Output
 ```
-🔄 Iterative Query Pipeline
+Query
 Query: What adverse events might metformin cause?
 Max iterations: 3
 
-━━━ Iteration 1/3 ━━━
+--- Iteration 1/3 ---
 Planning tools for: What adverse events might metformin cause?
 ✓ Executed 2 tool(s)
 
 Sufficiency Evaluation
-┌──────────┬────────────────────────────────────┐
-│ Status   │ partially_sufficient               │
-│ Confid.  │ 0.65                               │
-│ Can Ans. │ ✗                                  │
-│ Gaps     │ mechanism (P1)                     │
-└──────────┴────────────────────────────────────┘
+| Status   | partially_sufficient               |
+| Confid.  | 0.65                               |
+| Can Ans. | ✗                                  |
+| Gaps     | mechanism (P1)                     |
 
-🔍 Iteration 1 → 2
+Iteration 1 -> 2
 Refinement Query: What are the mechanistic pathways...
 Focus Areas: mechanism, pathways
 Priority Gaps: 1 gap(s)
 
-━━━ Iteration 2/3 ━━━
+--- Iteration 2/3 ---
 [... continues ...]
 ```
 

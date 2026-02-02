@@ -33,46 +33,123 @@ from kg_ae.llm import (
 console = Console()
 
 
-def execute_tools_for_query(query: str):
+def execute_tools_for_plan(plan):
     """
-    Placeholder tool executor that would actually run tools.
+    Execute tools from a ToolPlan.
     
-    In the real implementation, this would:
-    1. Call planner.plan(query)
-    2. Execute each tool in the plan
-    3. Return list of ToolResult objects
+    Takes a ToolPlan object (with thought, calls, stop_conditions)
+    and executes each tool call, returning results.
     
-    For now, this is a stub that returns mock results.
+    Args:
+        plan: ToolPlan object from planner
+        
+    Returns:
+        list of ToolResult-like objects
     """
-    # Import the full query_kg logic here, or integrate with existing executor
-    # This is just a placeholder to show the structure
-    
     from dataclasses import dataclass
     from typing import Any
     
     @dataclass
-    class MockToolResult:
+    class ToolResult:
         tool: str
         args: dict
         success: bool
         result: Any = None
         error: str | None = None
+        reason: str | None = None
     
-    # Mock results - replace with actual tool execution
-    return [
-        MockToolResult(
-            tool="resolve_drugs",
-            args={"names": ["metformin"]},
-            success=True,
-            result=[{"name": "metformin", "drug_key": 14042}],
-        ),
-        MockToolResult(
-            tool="get_drug_adverse_events",
-            args={"drug_key": 14042},
-            success=True,
-            result=[{"ae": "lactic acidosis", "frequency": 0.001}] * 84,
-        ),
-    ]
+    results = []
+    
+    for call in plan.calls:
+        # Mock execution - replace with actual tool implementation
+        if call.tool == "resolve_drugs":
+            result = ToolResult(
+                tool=call.tool,
+                args=call.args,
+                success=True,
+                result=[{"name": "metformin", "drug_key": 14042}],
+                reason=call.reason,
+            )
+        elif call.tool == "get_drug_adverse_events":
+            result = ToolResult(
+                tool=call.tool,
+                args=call.args,
+                success=True,
+                result=[{"ae": "lactic acidosis", "frequency": 0.001}] * 84,
+                reason=call.reason,
+            )
+        elif call.tool == "get_drug_targets":
+            result = ToolResult(
+                tool=call.tool,
+                args=call.args,
+                success=True,
+                result=[{"gene": "AMPK", "action": "activator"}],
+                reason=call.reason,
+            )
+        elif call.tool == "expand_mechanism":
+            result = ToolResult(
+                tool=call.tool,
+                args=call.args,
+                success=True,
+                result={"pathways": ["glucose metabolism", "lipid metabolism"]},
+                reason=call.reason,
+            )
+        elif call.tool == "get_gene_pathways":
+            result = ToolResult(
+                tool=call.tool,
+                args=call.args,
+                success=True,
+                result=[
+                    {"pathway": "AMPK signaling pathway", "reactome_id": "R-HSA-380972"},
+                    {"pathway": "Glucose metabolism", "reactome_id": "R-HSA-70326"},
+                    {"pathway": "Mitochondrial biogenesis", "reactome_id": "R-HSA-1592230"},
+                ],
+                reason=call.reason,
+            )
+        elif call.tool == "resolve_genes":
+            result = ToolResult(
+                tool=call.tool,
+                args=call.args,
+                success=True,
+                result=[{"name": "PRKAA1", "gene_key": 5562, "symbol": "AMPK"}],
+                reason=call.reason,
+            )
+        elif call.tool == "get_gene_diseases":
+            result = ToolResult(
+                tool=call.tool,
+                args=call.args,
+                success=True,
+                result=[
+                    {"disease": "Type 2 Diabetes", "mondo_id": "MONDO:0005148"},
+                    {"disease": "Metabolic syndrome", "mondo_id": "MONDO:0005152"},
+                ],
+                reason=call.reason,
+            )
+        elif call.tool == "get_drug_profile":
+            result = ToolResult(
+                tool=call.tool,
+                args=call.args,
+                success=True,
+                result={
+                    "name": "metformin",
+                    "drug_class": "biguanide",
+                    "indications": ["Type 2 Diabetes"],
+                    "targets": ["AMPK", "Complex I"],
+                },
+                reason=call.reason,
+            )
+        else:
+            result = ToolResult(
+                tool=call.tool,
+                args=call.args,
+                success=False,
+                error=f"Unknown tool: {call.tool}",
+                reason=call.reason,
+            )
+        
+        results.append(result)
+    
+    return results
 
 
 def run_query(query: str, max_iterations: int = 3, verbose: bool = True):
@@ -94,7 +171,7 @@ def run_query(query: str, max_iterations: int = 3, verbose: bool = True):
     # Run iterative query
     context = orchestrator.query(
         query=query,
-        tool_executor_fn=execute_tools_for_query,
+        tool_executor_fn=execute_tools_for_plan,
         max_iterations=max_iterations,
     )
     
@@ -102,28 +179,13 @@ def run_query(query: str, max_iterations: int = 3, verbose: bool = True):
     if verbose:
         console.print("\n" + "=" * 80)
         console.print(
-            Panel(
-                f"[bold]Status:[/] {context.completion_reason}\n"
-                f"[bold]Iterations:[/] {len(context.iterations)}/{context.max_iterations}\n"
-                f"[bold]Total Tools:[/] {len(context.get_all_tool_executions())}",
-                title="📊 Iterative Query Summary",
-                border_style="green",
-            )
+            f"[bold green]Complete[/] ({len(context.iterations)} iterations, "
+            f"{len(context.get_all_tool_executions())} total tools)"
         )
         
         if context.final_response:
             console.print("\n[bold cyan]Final Response:[/]")
-            console.print(Panel(Markdown(context.final_response), border_style="cyan"))
-        
-        # Show iteration breakdown
-        console.print("\n[bold yellow]Iteration Breakdown:[/]")
-        for iteration in context.iterations:
-            status_icon = "✓" if iteration.sufficiency_evaluation and iteration.sufficiency_evaluation.status == "sufficient" else "⟳"
-            console.print(
-                f"  {status_icon} Iteration {iteration.iteration_number}: "
-                f"{len(iteration.tool_executions)} tools, "
-                f"{'sufficient' if iteration.sufficiency_evaluation and iteration.sufficiency_evaluation.can_answer_with_current_data else 'needs more info'}"
-            )
+            console.print(Markdown(context.final_response))
     
     return context
 
@@ -132,11 +194,11 @@ def interactive_mode(max_iterations: int = 3):
     """Run in interactive mode."""
     console.print(
         Panel(
-            "[bold cyan]Iterative Query Pipeline[/]\n\n"
+            "[bold cyan]Query[/]\n\n"
             f"Max iterations: {max_iterations}\n"
             "Type 'quit' or 'exit' to stop\n"
             "Type 'set-max N' to change max iterations",
-            title="🔄 Interactive Mode",
+            title="Interactive Mode",
             border_style="cyan",
         )
     )
@@ -159,7 +221,7 @@ def interactive_mode(max_iterations: int = 3):
                     new_max = int(query.split()[1])
                     if 1 <= new_max <= 10:
                         current_max = new_max
-                        console.print(f"[green]✓ Max iterations set to {current_max}[/]")
+                        console.print(f"[green]\u2713 Max iterations set to {current_max}[/]")
                     else:
                         console.print("[red]Max iterations must be 1-10[/]")
                 except (IndexError, ValueError):

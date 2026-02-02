@@ -54,16 +54,31 @@ class ToolCall(BaseModel):
         use_enum_values = True
 
 
+class StopConditions(BaseModel):
+    """Conditions that indicate the planner should stop."""
+    no_relevant_tools: bool = Field(
+        default=False,
+        description="True if no tools can help answer the query"
+    )
+    sufficient_information: bool = Field(
+        default=False,
+        description="True if we already have enough information to answer"
+    )
+
+
 class ToolPlan(BaseModel):
     """Complete execution plan from planner LLM."""
-    calls: list[ToolCall] = Field(
-        ..., 
-        min_length=1,
-        description="Ordered list of tool calls to execute"
+    thought: str = Field(
+        ...,
+        description="Reasoning about what information is needed and why these tools will help"
     )
-    stop_conditions: dict = Field(
-        default_factory=dict,
-        description="Optional conditions to stop early (e.g., max_depth)"
+    calls: list[ToolCall] = Field(
+        default_factory=list,
+        description="Ordered list of tool calls to execute (can be empty if stopping)"
+    )
+    stop_conditions: StopConditions = Field(
+        default_factory=StopConditions,
+        description="Conditions to stop execution"
     )
     
     def validate_resolution_first(self) -> bool:

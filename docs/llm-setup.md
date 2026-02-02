@@ -48,11 +48,17 @@ external/                   # Deleted automatically after setup
 ## Server Options
 
 ```powershell
-# Custom GPU layers (default: 35)
+# Custom GPU layers (default: 99 = all layers)
 .\scripts\start_llm_servers.ps1 -GpuLayers 40
 
-# Run benchmark first
-.\scripts\start_llm_servers.ps1 -BenchmarkFirst
+# Both models on GPU (needs ~12GB VRAM)
+.\scripts\start_llm_servers.ps1 -BothGPU
+
+# Both models on CPU
+.\scripts\start_llm_servers.ps1 -BothCPU
+
+# Swap: Narrator on GPU, Planner on CPU
+.\scripts\start_llm_servers.ps1 -NarratorGPU
 
 # Start minimized
 .\scripts\start_llm_servers.ps1 -Minimized
@@ -75,8 +81,8 @@ planner = PlannerClient(config)
 narrator = NarratorClient(config)
 
 # Get tool plan
-plan = planner.get_plan("What are metformin's cardiac risks?")
+plan = planner.plan("What are metformin's cardiac risks?")
 
 # Generate summary (after executing tools)
-summary = narrator.summarize(evidence_pack)
+summary = narrator.narrate(query, evidence_context)
 ```

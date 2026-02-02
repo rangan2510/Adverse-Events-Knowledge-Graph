@@ -3,7 +3,7 @@ LLM orchestration layer for the Drug-AE Knowledge Graph.
 
 Two-phase architecture:
 - Planner (Phi-4-mini): Generates structured tool plans
-- Narrator (MediPhi): Summarizes evidence into natural language
+- Narrator (Phi-4): Synthesizes evidence into natural language
 
 Usage:
     from kg_ae.llm import Orchestrator, ask
@@ -18,7 +18,7 @@ Usage:
 """
 
 from .config import LLMConfig
-from .schemas import ToolName, ToolCall, ToolPlan, ResolvedEntities
+from .schemas import ToolName, ToolCall, ToolPlan, StopConditions, ResolvedEntities
 from .iterative_schemas import (
     SufficiencyStatus,
     InformationGap,
@@ -34,9 +34,10 @@ from .executor import ToolExecutor
 from .orchestrator import Orchestrator, QueryResult, ask
 from .iterative_orchestrator import IterativeOrchestrator
 from .prompts import (
+    AVAILABLE_TOOLS,
     PLANNER_SYSTEM_PROMPT,
     NARRATOR_SYSTEM_PROMPT,
-    SUFFICIENCY_EVALUATOR_PROMPT,
+    OBSERVATION_PROMPT,
     REFINEMENT_QUERY_PROMPT,
     format_planner_messages,
     format_narrator_messages,
@@ -72,18 +73,15 @@ __all__ = [
     "QueryResult",
     "IterativeOrchestrator",
     # Prompts
+    "AVAILABLE_TOOLS",
     "PLANNER_SYSTEM_PROMPT",
     "NARRATOR_SYSTEM_PROMPT",
-    "SUFFICIENCY_EVALUATOR_PROMPT",
+    "OBSERVATION_PROMPT",
     "REFINEMENT_QUERY_PROMPT",
     "format_planner_messages",
     "format_narrator_messages",
     "format_sufficiency_evaluation_messages",
     "format_refinement_messages",
+    # Entry point
     "ask",
-    # Prompts
-    "PLANNER_SYSTEM_PROMPT",
-    "NARRATOR_SYSTEM_PROMPT",
-    "format_planner_messages",
-    "format_narrator_messages",
 ]

@@ -1,27 +1,27 @@
 """
-Iterative orchestrator for multi-iteration query refinement.
+ReAct-style iterative orchestrator for multi-iteration query refinement.
 
-Implements the flow:
-1. Query → Planner → Tool calls
-2. Narrator evaluates sufficiency
-3. If insufficient → Refinement query → Loop back to step 1
-4. Continue until sufficient OR max iterations
-5. Narrator generates final response
+Implements the loop:
+  [Thought]     Planner reasons about what's needed (mini model)
+  [Action]      Planner outputs tool plan
+  [Execute]     Tools are executed
+  [Observation] Narrator evaluates results (full model)
+  [Repeat or Finish]
 """
 
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, Callable
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
 from .client import PlannerClient, NarratorClient
+from .schemas import ToolPlan
 from .iterative_schemas import (
     SufficiencyEvaluation,
-    RefinementRequest,
     ToolExecutionRecord,
     IterationRecord,
     IterativeContext,
@@ -30,7 +30,6 @@ from .iterative_schemas import (
 from .prompts import (
     format_planner_messages,
     format_sufficiency_evaluation_messages,
-    format_refinement_messages,
     format_narrator_messages,
 )
 
@@ -69,15 +68,15 @@ class IterativeOrchestrator:
     def query(
         self,
         query: str,
-        tool_executor_fn: Any,  # Function that takes (query) -> list[ToolResult]
+        tool_executor_fn: Callable[[ToolPlan], list],
         max_iterations: int | None = None,
     ) -> IterativeContext:
         """
-        Execute iterative query with multi-step refinement.
+        Execute ReAct-style iterative query.
         
         Args:
             query: User's natural language query
-            tool_executor_fn: Function to execute tool plans (returns ToolResult list)
+            tool_executor_fn: Function that takes ToolPlan and returns list of ToolResult
             max_iterations: Override default max iterations
             
         Returns:
@@ -90,144 +89,188 @@ class IterativeOrchestrator:
         )
         
         if self.verbose:
-            console.print(
-                Panel(
-                    f"[bold cyan]Query:[/] {query}\n[dim]Max iterations: {max_iter}[/]",
-                    title="🔄 Iterative Query Pipeline",
-                    border_style="cyan",
-                )
-            )
+            console.print(f"\n[bold cyan]Query:[/] {query}")
+            console.print(f"[dim](max {max_iter} iterations)[/]\n")
         
-        current_query = query
+        cumulative_context = ""  # Builds up across iterations
         
-        # Iterative loop
+        # ReAct loop: Thought -> Action -> Execute -> Observation -> (Repeat or Finish)
         while context.can_continue():
             iteration_num = context.current_iteration
             
             if self.verbose:
-                console.print(f"\n[bold yellow]━━━ Iteration {iteration_num}/{max_iter} ━━━[/]")
+                console.print(f"\n[bold yellow]--- Iteration {iteration_num} ---[/]")
             
-            # Start timing
             start_time = time.time()
             
-            # Phase 1: Execute tools for current query
-            tool_results = self._execute_iteration(current_query, tool_executor_fn)
+            # [Thought + Action] - Planner generates reasoning and tool plan
+            plan = self._plan_iteration(
+                original_query=query,
+                cumulative_context=cumulative_context,
+                iteration=iteration_num,
+            )
+            
+            if self.verbose:
+                self._display_thought_action(plan)
+            
+            # Check if planner decided to stop
+            if plan.stop_conditions.no_relevant_tools or plan.stop_conditions.sufficient_information:
+                if self.verbose:
+                    reason = "sufficient information" if plan.stop_conditions.sufficient_information else "no relevant tools"
+                    console.print(f"\n[green]Planner stopped: {reason}[/]")
+                
+                # Create iteration record with no tool executions
+                iteration_record = IterationRecord(
+                    iteration_number=iteration_num,
+                    query=query,
+                    tool_executions=[],
+                    timestamp_start=start_time,
+                    timestamp_end=time.time(),
+                )
+                context.add_iteration_record(iteration_record)
+                
+                # Generate final response from what we have
+                final_response = self._generate_final_response(context, cumulative_context)
+                context.final_response = final_response
+                context.mark_complete("planner_stopped")
+                break
+            
+            # [Execute] - Run the planned tools
+            tool_results = tool_executor_fn(plan)
+            
+            # Convert to ToolExecutionRecord list
+            execution_records = self._convert_tool_results(tool_results, plan)
+            
+            # Format tool outputs for context
+            tool_outputs_text = self._format_tool_outputs(execution_records)
             
             # Create iteration record
             iteration_record = IterationRecord(
                 iteration_number=iteration_num,
-                query=current_query,
-                tool_executions=tool_results,
+                query=query,
+                tool_executions=execution_records,
                 timestamp_start=start_time,
             )
             
-            # Phase 2: Evaluate sufficiency
-            tool_outputs_text = self._format_tool_outputs(tool_results)
-            cumulative_context = context.get_cumulative_context() if iteration_num > 1 else ""
-            
-            sufficiency_eval = self._evaluate_sufficiency(
+            # [Observation] - Narrator evaluates results
+            observation = self._generate_observation(
                 original_query=query,
-                current_iteration=iteration_num,
+                iteration=iteration_num,
                 tool_outputs=tool_outputs_text,
                 cumulative_context=cumulative_context,
             )
             
-            iteration_record.sufficiency_evaluation = sufficiency_eval
+            iteration_record.sufficiency_evaluation = observation
+            iteration_record.timestamp_end = time.time()
+            context.add_iteration_record(iteration_record)
             
             if self.verbose:
-                self._display_sufficiency_eval(sufficiency_eval)
+                self._display_observation(observation)
             
-            # Phase 3: Decide next action
-            if sufficiency_eval.status == SufficiencyStatus.SUFFICIENT or sufficiency_eval.can_answer_with_current_data:
-                # We have enough - generate final response
-                iteration_record.timestamp_end = time.time()
-                context.add_iteration_record(iteration_record)
+            # Update cumulative context for next iteration
+            cumulative_context = self._build_cumulative_context(
+                previous_context=cumulative_context,
+                iteration=iteration_num,
+                thought=plan.thought,
+                tool_outputs=tool_outputs_text,
+                observation=observation.reasoning,
+            )
+            
+            # Decide: continue or finish
+            if observation.status == SufficiencyStatus.SUFFICIENT or observation.can_answer_with_current_data:
+                if self.verbose:
+                    console.print(f"\n[green]Observation: sufficient. Generating final response...[/]")
                 
-                final_response = self._generate_final_response(context, tool_outputs_text)
+                final_response = self._generate_final_response(context, cumulative_context)
                 context.final_response = final_response
                 context.mark_complete("sufficient")
-                
-                if self.verbose:
-                    console.print(f"\n[green]✓ Sufficient information gathered after {iteration_num} iteration(s)[/]")
-                
                 break
             
-            elif not context.can_continue():
-                # Hit max iterations - force final response
-                iteration_record.timestamp_end = time.time()
-                context.add_iteration_record(iteration_record)
+            elif context.current_iteration >= context.max_iterations:
+                if self.verbose:
+                    console.print(f"\n[yellow]Max iterations reached. Generating best-effort response...[/]")
                 
-                final_response = self._generate_final_response(context, tool_outputs_text)
+                final_response = self._generate_final_response(context, cumulative_context)
                 context.final_response = final_response
                 context.mark_complete("max_iterations")
-                
-                if self.verbose:
-                    console.print(f"\n[yellow]⚠ Maximum iterations reached - generating best-effort response[/]")
-                
                 break
             
             else:
-                # Need more information - generate refinement
-                refinement = self._generate_refinement(
-                    original_query=query,
-                    current_iteration=iteration_num,
-                    sufficiency_eval=sufficiency_eval,
-                    cumulative_context=cumulative_context,
-                )
-                
-                iteration_record.refinement_request = refinement
-                iteration_record.timestamp_end = time.time()
-                context.add_iteration_record(iteration_record)
-                
-                if self.verbose:
-                    self._display_refinement(refinement)
-                
-                # Update query for next iteration
-                current_query = refinement.refinement_query
+                # Continue to next iteration - planner will see updated context
                 context.increment_iteration()
         
         return context
     
-    def _execute_iteration(self, query: str, tool_executor_fn: Any) -> list[ToolExecutionRecord]:
-        """Execute tools for one iteration."""
-        if self.verbose:
-            console.print(f"[dim]Planning tools for:[/] {query}")
+    def _plan_iteration(
+        self,
+        original_query: str,
+        cumulative_context: str,
+        iteration: int,
+    ) -> ToolPlan:
+        """
+        Ask planner LLM to generate thought + action (tool plan).
         
-        # Call tool executor (returns list of ToolResult)
-        tool_results = tool_executor_fn(query)
+        Uses mini model (fast) to reason about what tools are needed.
+        """
+        messages = format_planner_messages(
+            query=original_query,
+            cumulative_context=cumulative_context,
+            iteration=iteration,
+        )
         
-        # Convert to ToolExecutionRecord
+        result = self.planner.generate_structured(
+            messages=messages,
+            response_model=ToolPlan,
+        )
+        
+        return result
+    
+    def _convert_tool_results(
+        self,
+        tool_results: list,
+        plan: ToolPlan,
+    ) -> list[ToolExecutionRecord]:
+        """Convert raw tool results to ToolExecutionRecord list."""
         records = []
+        
+        # Build reason lookup from plan
+        reason_map = {}
+        for call in plan.calls:
+            key = (call.tool, str(call.args))
+            reason_map[key] = call.reason
+        
         for result in tool_results:
+            key = (result.tool, str(result.args))
+            reason = reason_map.get(key, None)
+            
             record = ToolExecutionRecord(
                 tool_name=result.tool,
                 args=result.args,
                 success=result.success,
                 result_summary=self._summarize_result(result),
                 error=result.error,
-                iteration=1,  # Will be updated by caller
+                iteration=1,  # Will be set correctly by caller
+                reason=reason or getattr(result, 'reason', None),
             )
             records.append(record)
         
-        if self.verbose:
-            console.print(f"[green]✓ Executed {len(records)} tool(s)[/]")
-        
         return records
     
-    def _evaluate_sufficiency(
+    def _generate_observation(
         self,
         original_query: str,
-        current_iteration: int,
+        iteration: int,
         tool_outputs: str,
         cumulative_context: str,
     ) -> SufficiencyEvaluation:
-        """Ask narrator LLM to evaluate sufficiency."""
-        if self.verbose:
-            console.print("[dim]Evaluating information sufficiency...[/]")
+        """
+        Ask narrator LLM to generate observation (evaluate results).
         
+        Uses full model (smart) to analyze tool outputs and determine sufficiency.
+        """
         messages = format_sufficiency_evaluation_messages(
             original_query=original_query,
-            current_iteration=current_iteration,
+            current_iteration=iteration,
             tool_outputs=tool_outputs,
             cumulative_context=cumulative_context,
         )
@@ -239,42 +282,34 @@ class IterativeOrchestrator:
         
         return result
     
-    def _generate_refinement(
+    def _build_cumulative_context(
         self,
-        original_query: str,
-        current_iteration: int,
-        sufficiency_eval: SufficiencyEvaluation,
-        cumulative_context: str,
-    ) -> RefinementRequest:
-        """Ask narrator LLM to generate refinement query."""
-        if self.verbose:
-            console.print("[dim]Generating refinement query...[/]")
-        
-        messages = format_refinement_messages(
-            original_query=original_query,
-            current_iteration=current_iteration,
-            sufficiency_eval=sufficiency_eval.model_dump(),
-            cumulative_context=cumulative_context,
-        )
-        
-        result = self.narrator.generate_structured(
-            messages=messages,
-            response_model=RefinementRequest,
-        )
-        
-        return result
+        previous_context: str,
+        iteration: int,
+        thought: str,
+        tool_outputs: str,
+        observation: str,
+    ) -> str:
+        """Build cumulative context string for next iteration."""
+        new_section = f"""
+=== Iteration {iteration} ===
+[Thought] {thought}
+
+[Tool Results]
+{tool_outputs}
+
+[Observation] {observation}
+"""
+        return previous_context + new_section
     
-    def _generate_final_response(self, context: IterativeContext, latest_tool_outputs: str) -> str:
+    def _generate_final_response(self, context: IterativeContext, cumulative_context: str) -> str:
         """Generate final narrative response using all gathered evidence."""
         if self.verbose:
             console.print("\n[bold cyan]Generating final response...[/]")
         
-        # Combine all tool outputs from all iterations
-        all_evidence = context.get_cumulative_context() + "\n\n" + latest_tool_outputs
-        
         messages = format_narrator_messages(
             query=context.original_query,
-            evidence_context=all_evidence,
+            evidence_context=cumulative_context,
         )
         
         response = self.narrator.generate_text(messages=messages)
@@ -284,8 +319,9 @@ class IterativeOrchestrator:
         """Format tool outputs for LLM context."""
         lines = []
         for result in tool_results:
-            status = "✓" if result.success else "✗"
-            lines.append(f"{status} {result.tool_name}({result.args})")
+            status = "\u2713" if result.success else "\u2717"
+            reason_str = f" [{result.reason}]" if result.reason else ""
+            lines.append(f"{status} {result.tool_name}({result.args}){reason_str}")
             if result.success:
                 lines.append(f"  Result: {result.result_summary}")
             else:
@@ -308,39 +344,34 @@ class IterativeOrchestrator:
         
         return "Success"
     
-    def _display_sufficiency_eval(self, eval_result: SufficiencyEvaluation) -> None:
-        """Display sufficiency evaluation in rich format."""
+    def _display_thought_action(self, plan: ToolPlan) -> None:
+        """Display the planner's thought and action (tool plan)."""
+        console.print(f"\n[bold magenta][Thought][/] {plan.thought}")
+        
+        if not plan.calls:
+            console.print(f"\n[bold blue][Action][/] No tools to call")
+        else:
+            console.print(f"\n[bold blue][Action][/] Calling {len(plan.calls)} tool(s):")
+            for call in plan.calls:
+                reason_str = f" - {call.reason}" if call.reason else ""
+                console.print(f"  - {call.tool}({call.args}){reason_str}")
+    
+    def _display_observation(self, observation: SufficiencyEvaluation) -> None:
+        """Display the narrator's observation."""
         status_color = {
             SufficiencyStatus.SUFFICIENT: "green",
             SufficiencyStatus.INSUFFICIENT: "red",
             SufficiencyStatus.PARTIALLY_SUFFICIENT: "yellow",
         }
         
-        color = status_color.get(eval_result.status, "white")
+        color = status_color.get(observation.status, "white")
         
-        table = Table(title="Sufficiency Evaluation", show_header=False, box=None)
-        table.add_column("Key", style="bold")
-        table.add_column("Value")
+        console.print(f"\n[bold cyan][Observation][/]")
+        console.print(f"  [{color}]Status: {observation.status}[/] (confidence: {observation.confidence:.0%})")
+        console.print(f"  {observation.reasoning}")
         
-        table.add_row("Status", f"[{color}]{eval_result.status}[/]")
-        table.add_row("Confidence", f"{eval_result.confidence:.2f}")
-        table.add_row("Can Answer", "✓" if eval_result.can_answer_with_current_data else "✗")
-        table.add_row("Reasoning", eval_result.reasoning[:100] + "..." if len(eval_result.reasoning) > 100 else eval_result.reasoning)
-        
-        if eval_result.information_gaps:
-            gaps_str = ", ".join(f"{g.category} (P{g.priority})" for g in eval_result.information_gaps[:3])
-            table.add_row("Gaps", gaps_str)
-        
-        console.print(table)
-    
-    def _display_refinement(self, refinement: RefinementRequest) -> None:
-        """Display refinement request in rich format."""
-        console.print(
-            Panel(
-                f"[bold]Refinement Query:[/]\n{refinement.refinement_query}\n\n"
-                f"[bold]Focus Areas:[/] {', '.join(refinement.focus_areas)}\n"
-                f"[bold]Priority Gaps:[/] {len(refinement.priority_gaps)} gap(s)",
-                title=f"🔍 Iteration {refinement.iteration_count} → {refinement.iteration_count + 1}",
-                border_style="yellow",
-            )
-        )
+        if observation.information_gaps:
+            console.print(f"\n  [dim]Information gaps:[/]")
+            for gap in observation.information_gaps:
+                tool_hint = f" (use {gap.suggested_tool})" if gap.suggested_tool else ""
+                console.print(f"    - [{gap.category}] {gap.description}{tool_hint}")

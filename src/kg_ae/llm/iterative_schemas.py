@@ -24,6 +24,7 @@ class InformationGap(BaseModel):
     category: str = Field(..., description="Category of missing info (e.g., 'mechanism', 'pathway', 'interaction')")
     description: str = Field(..., description="What information is missing")
     priority: int = Field(default=1, description="Priority 1=high, 2=medium, 3=low")
+    suggested_tool: str | None = Field(default=None, description="Tool that could fill this gap (e.g., 'get_gene_pathways')")
 
 
 class SufficiencyEvaluation(BaseModel):
@@ -107,6 +108,7 @@ class ToolExecutionRecord(BaseModel):
     result_summary: str = Field(..., description="Brief summary of result")
     error: str | None = Field(None, description="Error message if failed")
     iteration: int = Field(..., description="Which iteration this was executed in")
+    reason: str | None = Field(None, description="Why this tool was called")
 
 
 class IterationRecord(BaseModel):
@@ -175,7 +177,7 @@ class IterativeContext(BaseModel):
     
     def can_continue(self) -> bool:
         """Check if another iteration is allowed."""
-        return not self.is_complete and self.current_iteration < self.max_iterations
+        return not self.is_complete and self.current_iteration <= self.max_iterations
     
     def increment_iteration(self) -> None:
         """Move to next iteration."""
@@ -218,8 +220,9 @@ class IterativeContext(BaseModel):
             
             lines.append(f"Tools Executed: {len(iteration.tool_executions)}")
             for tool_exec in iteration.tool_executions:
-                status = "✓" if tool_exec.success else "✗"
-                lines.append(f"  {status} {tool_exec.tool_name}: {tool_exec.result_summary}")
+                status = "\u2713" if tool_exec.success else "\u2717"
+                reason_str = f" [{tool_exec.reason}]" if tool_exec.reason else ""
+                lines.append(f"  {status} {tool_exec.tool_name}{reason_str}: {tool_exec.result_summary}")
             
             if iteration.sufficiency_evaluation:
                 eval_result = iteration.sufficiency_evaluation

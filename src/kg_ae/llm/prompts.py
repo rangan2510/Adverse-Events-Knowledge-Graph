@@ -2,15 +2,8 @@
 Prompt templates for planner and narrator LLMs.
 """
 
-PLANNER_SYSTEM_PROMPT = """You are a tool-calling planner for a pharmacovigilance knowledge graph.
-
-Your ONLY job is to output a JSON tool plan.
-DO NOT output any text before or after the JSON.
-DO NOT explain your reasoning.
-ONLY output valid JSON matching the schema below.
-
-## Available Tools
-
+# Available tools for the knowledge graph system (shared by planner and evaluator)
+AVAILABLE_TOOLS = """
 ### Entity Resolution (ALWAYS call these first for user-provided names)
 - resolve_drugs(names: list[str]) - Resolve drug names to database IDs
 - resolve_genes(symbols: list[str]) - Resolve gene symbols to database IDs
@@ -42,29 +35,42 @@ ONLY output valid JSON matching the schema below.
 
 ### Subgraph
 - build_subgraph(drug_keys: list[int], include_targets: bool=True, include_pathways: bool=True, include_diseases: bool=True, include_aes: bool=True) - Build visualization subgraph
+"""
+
+PLANNER_SYSTEM_PROMPT = """You are a ReAct-style planner for a pharmacovigilance knowledge graph.
+
+You operate in a loop: Thought -> Action -> Observation -> (repeat or finish)
+
+Your job is to output a JSON plan with:
+1. "thought": Your reasoning about what you need and why
+2. "calls": List of tool calls (Actions)
+
+DO NOT output any text before or after the JSON.
+
+## Available Tools
+{available_tools}
 
 ## Rules
 
-1. ALWAYS start with resolve_* calls for any user-provided entity names
-2. Use the resolved keys (integers) for all subsequent tool calls
-3. If uncertain which entities to resolve, emit resolve_* calls first
-4. Order calls logically: resolve -> query -> expand -> paths
-5. Return ONLY valid JSON matching the ToolPlan schema
-6. NO prose, NO explanations, NO markdown - just JSON
-7. MAXIMUM 5 tool calls total - be selective, not exhaustive
-8. For adverse events queries: resolve_drugs + get_drug_adverse_events is usually sufficient
+1. In "thought", explain WHAT information you need and WHY these tools will help
+2. On first iteration: start with resolve_* calls for user-provided entity names
+3. On subsequent iterations: use resolved keys (provided in context) and call NEW tools
+4. DO NOT repeat tools already executed (check the context)
+5. MAXIMUM 5 tool calls per iteration - be selective
+6. Use placeholder values (0, 1) for keys - executor will substitute resolved values
 
 ## Output Format
 
-{
+{{
+  "thought": "I need to find metformin's gene targets to understand the mechanism. I'll use get_drug_targets with the resolved drug key.",
   "calls": [
-    {"tool": "resolve_drugs", "args": {"names": ["aspirin"]}, "reason": "resolve drug name"},
-    {"tool": "get_drug_targets", "args": {"drug_key": 123}, "reason": "get targets"}
+    {{"tool": "get_drug_targets", "args": {{"drug_key": 0}}, "reason": "get gene targets"}}
   ],
-  "stop_conditions": {}
-}
+  "stop_conditions": {{"no_relevant_tools": false, "sufficient_information": false}}
+}}
 
-Note: For drug_key, gene_key, etc. - use placeholder values like 0 or 1. The executor will substitute actual resolved keys.
+If you already have enough information from previous iterations, set "sufficient_information" to true and leave "calls" empty.
+If no tools can help answer the query, set "no_relevant_tools" to true and leave "calls" empty.
 
 Respond with ONLY the JSON object, nothing else.
 """
@@ -114,48 +120,46 @@ If the evidence is insufficient to answer the query, explain what is missing.
 """
 
 
-SUFFICIENCY_EVALUATOR_PROMPT = """You are an information sufficiency evaluator for a pharmacovigilance knowledge graph query system.
+OBSERVATION_PROMPT = """You are the Observation step in a ReAct agent for a pharmacovigilance knowledge graph.
 
 ## Your Task
 
-Evaluate whether the current tool outputs provide SUFFICIENT information to answer the user's query.
+Analyze the tool outputs and generate an OBSERVATION that:
+1. Summarizes what was learned from the tool results
+2. Evaluates whether the original query can be answered
+3. Identifies specific gaps (with suggested tools) if more information is needed
+
+## Available Tools for Next Iteration
+{available_tools}
 
 ## Evaluation Criteria
 
-Consider information SUFFICIENT if:
-1. The query can be answered with meaningful, evidence-backed conclusions
-2. Key mechanistic relationships are present (if relevant)
-3. Primary adverse event data is available (if relevant)
-4. Critical context exists to make the answer useful
-
-Consider information INSUFFICIENT if:
-1. Critical data is missing (e.g., no AE data for a drug-AE query)
-2. Mechanistic pathways are completely unknown
-3. The answer would be too speculative without more evidence
-4. Important context is missing (e.g., patient conditions not explored)
-
-Consider information PARTIALLY_SUFFICIENT if:
-1. Basic answer is possible but missing depth
-2. Some pathways known but others unexplored
-3. AE data exists but mechanism unclear
+SUFFICIENT: Query can be fully answered with evidence-backed conclusions
+INSUFFICIENT: Critical data missing and tools exist to fill gaps
+PARTIALLY_SUFFICIENT: Basic answer possible but lacking depth
 
 ## Output Format
 
-Return ONLY valid JSON matching the SufficiencyEvaluation schema:
+Return ONLY valid JSON:
 
-{
+{{
   "status": "sufficient|insufficient|partially_sufficient",
   "confidence": 0.0-1.0,
-  "reasoning": "Explain your evaluation",
+  "reasoning": "Your observation: what was learned, what's missing, can we answer the query?",
   "information_gaps": [
-    {"category": "mechanism", "description": "Missing pathway data", "priority": 1},
-    {"category": "adverse_events", "description": "No FAERS signals", "priority": 2}
+    {{"category": "mechanism", "description": "Need gene targets", "priority": 1, "suggested_tool": "get_drug_targets"}},
+    {{"category": "pathway", "description": "Need pathway data", "priority": 2, "suggested_tool": "get_gene_pathways"}}
   ],
   "can_answer_with_current_data": true|false,
   "iteration_count": <current_iteration>
-}
+}}
 
-Be conservative: only mark as SUFFICIENT if a healthcare professional would find the answer actionable.
+## Guidelines
+
+1. In "reasoning", write a clear observation summarizing what you learned and what's still needed
+2. Only mark SUFFICIENT if a healthcare professional could act on the answer
+3. For each gap, specify which tool would fill it
+4. Be concise but complete
 """
 
 
@@ -200,11 +204,38 @@ Generate a query that will lead to a complete answer when combined with existing
 """
 
 
-def format_planner_messages(query: str) -> list[dict]:
-    """Format messages for planner LLM."""
+def format_planner_messages(
+    query: str, 
+    cumulative_context: str = "",
+    iteration: int = 1,
+) -> list[dict]:
+    """Format messages for planner LLM.
+    
+    Args:
+        query: User query
+        cumulative_context: Results from previous iterations (tools executed, observations)
+        iteration: Current iteration number (1-indexed)
+    """
+    system_prompt = PLANNER_SYSTEM_PROMPT.format(available_tools=AVAILABLE_TOOLS)
+    
+    if iteration == 1 or not cumulative_context:
+        user_content = f"Create a tool plan for: {query}\n\nRespond with ONLY JSON."
+    else:
+        user_content = f"""Original query: {query}
+
+## Previous Iterations
+{cumulative_context}
+
+## Iteration {iteration}
+Based on the context above, plan the NEXT set of tools to gather missing information.
+DO NOT repeat tools already executed.
+Use the resolved entity keys from previous iterations.
+
+Respond with ONLY JSON."""
+    
     return [
-        {"role": "system", "content": PLANNER_SYSTEM_PROMPT},
-        {"role": "user", "content": f"Create a tool plan for: {query}\n\nRespond with ONLY JSON."},
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_content},
     ]
 
 
@@ -225,8 +256,20 @@ def format_sufficiency_evaluation_messages(
     current_iteration: int,
     tool_outputs: str,
     cumulative_context: str = "",
+    available_tools: str | None = None,
 ) -> list[dict]:
-    """Format messages for sufficiency evaluation."""
+    """Format messages for sufficiency evaluation.
+    
+    Args:
+        original_query: The user's original question
+        current_iteration: Current iteration number (1-indexed)
+        tool_outputs: Formatted tool outputs from this iteration
+        cumulative_context: Context from previous iterations
+        available_tools: List of available tools (defaults to AVAILABLE_TOOLS)
+    """
+    tools = available_tools or AVAILABLE_TOOLS
+    system_prompt = OBSERVATION_PROMPT.format(available_tools=tools)
+    
     user_content = f"""## Original Query
 {original_query}
 
@@ -240,10 +283,11 @@ def format_sufficiency_evaluation_messages(
 ---
 
 Evaluate whether the information above is sufficient to answer the original query.
+Consider the available tools above - if critical gaps exist and a tool could fill them, request more information.
 Return ONLY valid JSON matching the SufficiencyEvaluation schema.
 """
     return [
-        {"role": "system", "content": SUFFICIENCY_EVALUATOR_PROMPT},
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_content},
     ]
 

@@ -38,7 +38,7 @@ src/kg_ae/
 
 1. **Claim-Evidence Pattern**: Associations are first-class `Claim` nodes with edges to `Evidence` nodes for full provenance tracking
 
-2. **Canonical ID Strategy** (see [docs/milestones.md](../docs/milestones.md#2-canonical-id-strategy-this-makes-or-breaks-the-project)):
+2. **Canonical ID Strategy** (see [milestones.md](.github/copilot-planning/milestones.md#2-canonical-id-strategy-this-makes-or-breaks-the-project)):
    - Drug: `drug_key` (internal) + DrugCentral ID, ChEMBL ID, PubChem CID, InChIKey
    - Gene: `gene_key` + HGNC ID (canonical), Ensembl, UniProt
    - Disease: `disease_key` + MONDO ID (canonical), DOID, EFO
@@ -53,7 +53,7 @@ src/kg_ae/
 
 ## SQL Server 2025 Schema
 
-The schema lives in the `kg` schema namespace. Key tables (see [docs/schema.md](../docs/schema.md)):
+The schema lives in the `kg` schema namespace. Key tables (see [schema.md](.github/copilot-planning/schema.md)):
 
 ### Node Tables
 | Table | Purpose | Key External IDs |
@@ -99,7 +99,7 @@ The schema lives in the `kg` schema namespace. Key tables (see [docs/schema.md](
 
 ## LLM Tool Interface
 
-The LLM calls these deterministic tools (see [docs/milestones.md](../docs/milestones.md#6-llm-orchestration-llamacpp--strict-tool-calling)):
+The LLM calls these deterministic tools (see [milestones.md](.github/copilot-planning/milestones.md#6-llm-orchestration-llamacpp--strict-tool-calling)):
 
 ```python
 resolve_entities(drugs, conditions)      # → canonical IDs + confidence
@@ -144,9 +144,9 @@ export_subgraph(nodes, edges, format)    # → JSON or GraphML
 
 ## Key Files
 
-- [docs/milestones.md](../docs/milestones.md) — Full project plan with 10 sections
-- [docs/schema.md](../docs/schema.md) — Complete SQL Server DDL for graph schema
-- [docs/steps-1-2-3.md](../docs/steps-1-2-3.md) — Detailed ETL implementation plan
+- [milestones.md](.github/copilot-planning/milestones.md) — Full project plan with 10 sections
+- [schema.md](.github/copilot-planning/schema.md) — Complete SQL Server DDL for graph schema
+- [steps-1-2-3.md](.github/copilot-planning/steps-1-2-3.md) — Detailed ETL implementation plan
 
 ## Gotchas
 

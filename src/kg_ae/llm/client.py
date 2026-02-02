@@ -89,6 +89,27 @@ class PlannerClient:
         )
         return plan
 
+    def generate_structured(self, messages: list[dict], response_model):
+        """
+        Generate structured output from custom messages.
+
+        Args:
+            messages: Chat messages list (typically from format_planner_messages)
+            response_model: Pydantic model class to enforce (typically ToolPlan)
+
+        Returns:
+            Instance of response_model
+        """
+        result = self._client.chat.completions.create(
+            model=self.config.planner_model,
+            messages=messages,
+            response_model=response_model,
+            temperature=self.config.planner_temperature,
+            max_tokens=self.config.planner_max_tokens,
+            max_retries=2,
+        )
+        return result
+
 
 class NarratorClient:
     """

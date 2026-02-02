@@ -3,6 +3,8 @@
 Pharmacovigilance knowledge graph linking drugs to adverse events through mechanistic pathways:
 **Drug → Gene → Pathway → Disease → Adverse Event**
 
+![LLM Query Demo](docs/screenshot.png)
+
 ## Prerequisites
 
 - Python 3.12+
@@ -67,6 +69,25 @@ WHERE MATCH(d-(hc1)->c1-(cg)->g)
 ORDER BY c2.strength_score DESC
 ```
 
+## LLM Query System
+
+Natural language queries using local LLMs (Phi-4-mini planner + Phi-4 narrator):
+
+```bash
+# Setup LLM servers (first time)
+.\scripts\setup_llm.ps1
+.\scripts\start_llm_servers.ps1
+
+# Query adverse events
+uv run python scripts/query_kg.py "What adverse events does metformin cause?"
+
+# Multi-drug query
+uv run python scripts/query_kg.py "Combined AEs of aspirin, warfarin, and omeprazole"
+
+# Interactive mode with iterative reasoning
+uv run python scripts/query_iterative.py --interactive
+```
+
 ## Documentation
 
 | Document | Description |
@@ -74,3 +95,6 @@ ORDER BY c2.strength_score DESC
 | [docs/data-sources.md](docs/data-sources.md) | Complete reference for all 13 data sources |
 | [docs/etl-guide.md](docs/etl-guide.md) | ETL pipeline usage and commands |
 | [docs/setup.md](docs/setup.md) | Database and environment setup |
+| [docs/llm-setup.md](docs/llm-setup.md) | LLM server setup and configuration |
+| [docs/tools-api.md](docs/tools-api.md) | Tool functions API reference |
+| [docs/iterative_reasoning.md](docs/iterative_reasoning.md) | Iterative query refinement system |
