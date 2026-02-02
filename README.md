@@ -1,13 +1,53 @@
 # Drug-AE Knowledge Graph
 
-Pharmacovigilance knowledge graph linking drugs to adverse events through mechanistic pathways:
-**Drug → Gene → Pathway → Disease → Adverse Event**
+A pharmacovigilance knowledge graph with **agentic reasoning** for mechanistic adverse event analysis.
+
+## Overview
+
+This system addresses a core limitation in LLM-based biomedical question answering: the tendency to hallucinate plausible-sounding but ungrounded causal relationships. We constrain the LLM to operate as a **reasoning controller** over deterministic graph traversal tools, ensuring every claim is traceable to curated evidence.
+
+### Architecture
+
+The system implements a **ReAct-style agentic loop** with strict separation of concerns:
+
+```
+User Query
+    |
+    v
+[Thought]  Planner LLM reasons about information needs     (Phi-4-mini, fast)
+[Action]   Planner emits tool calls as structured JSON
+[Execute]  Deterministic tools query SQL Server graph       (no LLM involvement)
+[Observe]  Narrator LLM evaluates result sufficiency        (Phi-4, high capacity)
+    |
+    +---> Loop if insufficient | Generate final response
+```
+
+**Key constraint**: The LLM can only access the knowledge graph through typed tool functions. It cannot fabricate edges, invent gene targets, or cite non-existent studies. All associations in the response derive from:
+
+- **DrugCentral / ChEMBL**: Drug-target binding evidence
+- **Reactome**: Curated pathway membership
+- **Open Targets**: Gene-disease association scores
+- **SIDER / FAERS**: Adverse event frequencies and signals
+
+### Graph Schema
+
+Mechanistic paths follow the provenance-tracked claim-evidence pattern:
+
+```
+Drug -[HasClaim]-> Claim -[ClaimGene]-> Gene -[HasClaim]-> Claim -[ClaimPathway]-> Pathway
+                     |                                        |
+              [SupportedBy]                            [SupportedBy]
+                     v                                        v
+                 Evidence                                 Evidence
+```
+
+Every edge carries: `source` (dataset + version), `evidence_ids` (provenance links), `score` (0-1 normalized), and `meta_json` (raw fields preserved).
 
 ![LLM Query Demo](docs/screenshot.png)
 
 ## Prerequisites
 
-- Python 3.12+
+- Python 3.14+
 - [uv](https://docs.astral.sh/uv/) package manager
 - SQL Server 2025 (localhost, sa/password1$, database: `kg_ae`)
 
@@ -69,24 +109,37 @@ WHERE MATCH(d-(hc1)->c1-(cg)->g)
 ORDER BY c2.strength_score DESC
 ```
 
-## LLM Query System
+## Agentic Query Interface
 
-Natural language queries using local LLMs (Phi-4-mini planner + Phi-4 narrator):
+Natural language queries with ReAct-style iterative reasoning. The planner decomposes complex questions into tool sequences; the narrator synthesizes graph evidence into grounded responses.
 
 ```bash
 # Setup LLM servers (first time)
 .\scripts\setup_llm.ps1
 .\scripts\start_llm_servers.ps1
 
-# Query adverse events
+# Single-pass query (plan once, execute, narrate)
 uv run python scripts/query_kg.py "What adverse events does metformin cause?"
 
-# Multi-drug query
-uv run python scripts/query_kg.py "Combined AEs of aspirin, warfarin, and omeprazole"
+# Multi-iteration reasoning (ReAct loop with observation-driven refinement)
+uv run python scripts/query_iterative.py "What genes does metformin target and what pathways are they involved in?"
 
-# Interactive mode with iterative reasoning
+# Interactive mode
 uv run python scripts/query_iterative.py --interactive
 ```
+
+### Available Tools
+
+| Tool | Purpose |
+|------|---------|
+| `resolve_drugs` | Entity resolution: name -> canonical drug_key |
+| `resolve_genes` | Entity resolution: symbol/name -> gene_key |
+| `get_drug_targets` | Drug -> Gene edges (mechanism of action) |
+| `get_drug_adverse_events` | Drug -> AE edges (SIDER frequencies) |
+| `get_drug_faers_signals` | Drug -> AE edges (FAERS disproportionality) |
+| `get_gene_pathways` | Gene -> Pathway membership (Reactome) |
+| `get_gene_diseases` | Gene -> Disease associations (Open Targets) |
+| `get_drug_profile` | Comprehensive drug summary |
 
 ## Documentation
 
