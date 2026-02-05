@@ -16,6 +16,10 @@ from collections.abc import Callable
 from typing import Any
 
 from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+from rich.status import Status
+from rich.text import Text
 
 from .client import NarratorClient, PlannerClient
 from .iterative_schemas import (
@@ -88,8 +92,13 @@ class IterativeOrchestrator:
         )
         
         if self.verbose:
-            console.print(f"\n[bold cyan]Query:[/] {query}")
-            console.print(f"[dim](max {max_iter} iterations)[/]\n")
+            query_panel = Panel(
+                Text(query, style="white"),
+                title="[bold cyan]Query[/]",
+                subtitle=f"[dim]max {max_iter} iterations[/]",
+                border_style="cyan",
+            )
+            console.print(query_panel)
         
         cumulative_context = ""  # Builds up across iterations
         
@@ -98,16 +107,25 @@ class IterativeOrchestrator:
             iteration_num = context.current_iteration
             
             if self.verbose:
-                console.print(f"\n[bold yellow]--- Iteration {iteration_num} ---[/]")
+                console.print()
+                console.rule(f"[bold yellow]Iteration {iteration_num}[/]", style="yellow")
             
             start_time = time.time()
             
             # [Thought + Action] - Planner generates reasoning and tool plan
-            plan = self._plan_iteration(
-                original_query=query,
-                cumulative_context=cumulative_context,
-                iteration=iteration_num,
-            )
+            if self.verbose:
+                with Status("[bold blue]Planner thinking...[/]", spinner="dots", console=console):
+                    plan = self._plan_iteration(
+                        original_query=query,
+                        cumulative_context=cumulative_context,
+                        iteration=iteration_num,
+                    )
+            else:
+                plan = self._plan_iteration(
+                    original_query=query,
+                    cumulative_context=cumulative_context,
+                    iteration=iteration_num,
+                )
             
             if self.verbose:
                 self._display_thought_action(plan)
@@ -116,11 +134,16 @@ class IterativeOrchestrator:
             if plan.stop_conditions.no_relevant_tools or plan.stop_conditions.sufficient_information:
                 if self.verbose:
                     reason = (
-                        "sufficient information"
+                        "sufficient information gathered"
                         if plan.stop_conditions.sufficient_information
-                        else "no relevant tools"
+                        else "no relevant tools available"
                     )
-                    console.print(f"\n[green]Planner stopped: {reason}[/]")
+                    stop_panel = Panel(
+                        f"[bold]{reason}[/]",
+                        title="[bold green]Planner Stopped[/]",
+                        border_style="green",
+                    )
+                    console.print(stop_panel)
                 
                 # Create iteration record with no tool executions
                 iteration_record = IterationRecord(
@@ -139,10 +162,18 @@ class IterativeOrchestrator:
                 break
             
             # [Execute] - Run the planned tools
-            tool_results = tool_executor_fn(plan)
+            if self.verbose:
+                with Status(f"[bold green]Executing {len(plan.calls)} tool(s)...[/]", spinner="dots", console=console):
+                    tool_results = tool_executor_fn(plan)
+            else:
+                tool_results = tool_executor_fn(plan)
             
             # Convert to ToolExecutionRecord list
             execution_records = self._convert_tool_results(tool_results, plan)
+            
+            # Display tool results in a table
+            if self.verbose:
+                self._display_tool_results(tool_results, execution_records)
             
             # Format tool outputs for context
             tool_outputs_text = self._format_tool_outputs(execution_records)
@@ -156,12 +187,21 @@ class IterativeOrchestrator:
             )
             
             # [Observation] - Narrator evaluates results
-            observation = self._generate_observation(
-                original_query=query,
-                iteration=iteration_num,
-                tool_outputs=tool_outputs_text,
-                cumulative_context=cumulative_context,
-            )
+            if self.verbose:
+                with Status("[bold cyan]Narrator evaluating...[/]", spinner="dots", console=console):
+                    observation = self._generate_observation(
+                        original_query=query,
+                        iteration=iteration_num,
+                        tool_outputs=tool_outputs_text,
+                        cumulative_context=cumulative_context,
+                    )
+            else:
+                observation = self._generate_observation(
+                    original_query=query,
+                    iteration=iteration_num,
+                    tool_outputs=tool_outputs_text,
+                    cumulative_context=cumulative_context,
+                )
             
             iteration_record.sufficiency_evaluation = observation
             iteration_record.timestamp_end = time.time()
@@ -182,7 +222,8 @@ class IterativeOrchestrator:
             # Decide: continue or finish
             if observation.status == SufficiencyStatus.SUFFICIENT or observation.can_answer_with_current_data:
                 if self.verbose:
-                    console.print("\n[green]Observation: sufficient. Generating final response...[/]")
+                    console.print()
+                    console.print("[bold green]Evidence sufficient - generating final response...[/]")
                 
                 final_response = self._generate_final_response(context, cumulative_context)
                 context.final_response = final_response
@@ -191,7 +232,8 @@ class IterativeOrchestrator:
             
             elif context.current_iteration >= context.max_iterations:
                 if self.verbose:
-                    console.print("\n[yellow]Max iterations reached. Generating best-effort response...[/]")
+                    console.print()
+                    console.print("[bold yellow]Max iterations reached - generating best-effort response...[/]")
                 
                 final_response = self._generate_final_response(context, cumulative_context)
                 context.final_response = final_response
@@ -307,15 +349,17 @@ class IterativeOrchestrator:
     
     def _generate_final_response(self, context: IterativeContext, cumulative_context: str) -> str:
         """Generate final narrative response using all gathered evidence."""
-        if self.verbose:
-            console.print("\n[bold cyan]Generating final response...[/]")
-        
         messages = format_narrator_messages(
             query=context.original_query,
             evidence_context=cumulative_context,
         )
         
-        response = self.narrator.generate_text(messages=messages)
+        if self.verbose:
+            with Status("[bold magenta]Narrator writing final response...[/]", spinner="dots", console=console):
+                response = self.narrator.generate_text(messages=messages)
+        else:
+            response = self.narrator.generate_text(messages=messages)
+        
         return response
     
     def _format_tool_outputs(self, tool_results: list[ToolExecutionRecord]) -> str:
@@ -349,32 +393,134 @@ class IterativeOrchestrator:
     
     def _display_thought_action(self, plan: ToolPlan) -> None:
         """Display the planner's thought and action (tool plan)."""
-        console.print(f"\n[bold magenta][Thought][/] {plan.thought}")
+        # Build thought panel content
+        thought_content = Text()
+        thought_content.append(plan.thought, style="white")
         
+        if plan.observations:
+            thought_content.append("\n\n")
+            thought_content.append("Observations: ", style="bold green")
+            thought_content.append(plan.observations, style="green")
+        
+        if plan.action_trace:
+            thought_content.append("\n\n")
+            thought_content.append("Trace: ", style="dim")
+            thought_content.append(plan.action_trace, style="dim italic")
+        
+        thought_panel = Panel(
+            thought_content,
+            title="[bold magenta]Planner Thought[/]",
+            border_style="magenta",
+        )
+        console.print(thought_panel)
+        
+        # Display action (tool calls)
         if not plan.calls:
-            console.print("\n[bold blue][Action][/] No tools to call")
+            console.print("[dim]No tools to call[/]")
         else:
-            console.print(f"\n[bold blue][Action][/] Calling {len(plan.calls)} tool(s):")
+            action_table = Table(
+                title=f"[bold blue]Action: {len(plan.calls)} Tool Call(s)[/]",
+                show_header=True,
+                header_style="bold blue",
+                border_style="blue",
+            )
+            action_table.add_column("Tool", style="cyan")
+            action_table.add_column("Arguments", style="white")
+            action_table.add_column("Reason", style="dim")
+            
             for call in plan.calls:
-                reason_str = f" - {call.reason}" if call.reason else ""
-                console.print(f"  - {call.tool}({call.args}){reason_str}")
+                args_str = ", ".join(f"{k}={v!r}" for k, v in call.args.items()) if call.args else "-"
+                action_table.add_row(
+                    str(call.tool),
+                    args_str,
+                    call.reason or "-",
+                )
+            
+            console.print(action_table)
+    
+    def _display_tool_results(self, raw_results: list, execution_records: list[ToolExecutionRecord]) -> None:
+        """Display tool execution results in a table."""
+        results_table = Table(
+            title="[bold green]Tool Results[/]",
+            show_header=True,
+            header_style="bold green",
+            border_style="green",
+        )
+        results_table.add_column("Status", width=3, justify="center")
+        results_table.add_column("Tool", style="cyan")
+        results_table.add_column("Result Summary", style="white")
+        results_table.add_column("Details", style="dim", max_width=60)
+        
+        for raw, record in zip(raw_results, execution_records):
+            status_icon = "[green]OK[/]" if record.success else "[red]ERR[/]"
+            
+            # Get more detailed result info
+            details = ""
+            if record.success and hasattr(raw, 'result') and raw.result is not None:
+                result_data = raw.result
+                if isinstance(result_data, list) and len(result_data) > 0:
+                    # Show first few items as preview
+                    if isinstance(result_data[0], dict):
+                        keys = list(result_data[0].keys())[:3]
+                        details = f"Keys: {', '.join(keys)}"
+                    else:
+                        preview = str(result_data[:2])[:50]
+                        details = preview + "..." if len(str(result_data)) > 50 else preview
+                elif isinstance(result_data, dict):
+                    keys = list(result_data.keys())[:4]
+                    details = f"Keys: {', '.join(keys)}"
+            elif record.error:
+                details = record.error[:50] + "..." if len(record.error or "") > 50 else (record.error or "")
+            
+            results_table.add_row(
+                status_icon,
+                record.tool_name,
+                record.result_summary,
+                details,
+            )
+        
+        console.print(results_table)
     
     def _display_observation(self, observation: SufficiencyEvaluation) -> None:
         """Display the narrator's observation."""
-        status_color = {
-            SufficiencyStatus.SUFFICIENT: "green",
-            SufficiencyStatus.INSUFFICIENT: "red",
-            SufficiencyStatus.PARTIALLY_SUFFICIENT: "yellow",
+        status_config = {
+            SufficiencyStatus.SUFFICIENT: ("green", "SUFFICIENT"),
+            SufficiencyStatus.INSUFFICIENT: ("red", "INSUFFICIENT"),
+            SufficiencyStatus.PARTIALLY_SUFFICIENT: ("yellow", "PARTIAL"),
         }
         
-        color = status_color.get(observation.status, "white")
+        color, status_label = status_config.get(observation.status, ("white", "UNKNOWN"))
         
-        console.print("\n[bold cyan][Observation][/]")
-        console.print(f"  [{color}]Status: {observation.status}[/] (confidence: {observation.confidence:.0%})")
-        console.print(f"  {observation.reasoning}")
+        # Confidence level label
+        if observation.confidence >= 0.8:
+            conf_label, conf_color = "high", "green"
+        elif observation.confidence >= 0.5:
+            conf_label, conf_color = "medium", "yellow"
+        else:
+            conf_label, conf_color = "low", "red"
         
+        # Build observation content
+        obs_content = Text()
+        obs_content.append("Status: ", style="bold")
+        obs_content.append(status_label, style=f"bold {color}")
+        obs_content.append("  |  Confidence: ", style="bold")
+        obs_content.append(conf_label, style=f"bold {conf_color}")
+        obs_content.append("\n\n")
+        obs_content.append(observation.reasoning, style="white")
+        
+        # Add information gaps if any
         if observation.information_gaps:
-            console.print("\n  [dim]Information gaps:[/]")
+            obs_content.append("\n\n")
+            obs_content.append("Information Gaps:", style="bold yellow")
             for gap in observation.information_gaps:
-                tool_hint = f" (use {gap.suggested_tool})" if gap.suggested_tool else ""
-                console.print(f"    - [{gap.category}] {gap.description}{tool_hint}")
+                obs_content.append(f"\n  - [{gap.category}] ", style="dim")
+                obs_content.append(gap.description, style="white")
+                if gap.suggested_tool:
+                    obs_content.append(f" (use {gap.suggested_tool})", style="cyan dim")
+        
+        obs_panel = Panel(
+            obs_content,
+            title="[bold cyan]Narrator Observation[/]",
+            border_style="cyan",
+        )
+        console.print(obs_panel)

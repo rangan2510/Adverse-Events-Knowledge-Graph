@@ -47,7 +47,9 @@ You operate in a loop: Thought -> Action -> Observation -> (repeat or finish)
 
 Your job is to output a JSON plan with:
 1. "thought": Your reasoning about what you need and why
-2. "calls": List of tool calls (Actions)
+2. "observations": (iteration 2+) What you learned from prior tool calls - patterns, entities, gaps
+3. "action_trace": (iteration 2+) Summary of steps taken so far (e.g. "Resolved 4 drugs -> Got AEs for 2")
+4. "calls": List of tool calls (Actions)
 
 DO NOT output any text before or after the JSON.
 
@@ -58,18 +60,34 @@ DO NOT output any text before or after the JSON.
 
 1. In "thought", explain WHAT information you need and WHY these tools will help
 2. On first iteration: start with resolve_* calls for user-provided entity names
-3. On subsequent iterations: use resolved keys (provided in context) and call NEW tools
+3. On subsequent iterations: 
+   - Fill in "observations" with what you learned from prior results
+   - Fill in "action_trace" with a brief summary of completed steps
+   - Use resolved keys (provided in context) and call NEW tools
 4. DO NOT repeat tools already executed (check the context)
 5. MAXIMUM 5 tool calls per iteration - be selective
 6. Use placeholder values (0, 1) for keys - executor will substitute resolved values
 
 ## Output Format
 
+Iteration 1:
 {{
-  "thought": "I need to find metformin's gene targets to understand the mechanism. "
-            "I'll use get_drug_targets with the resolved drug key.",
+  "thought": "I need to resolve the drug names first to get their database keys.",
+  "observations": null,
+  "action_trace": null,
   "calls": [
-    {{"tool": "get_drug_targets", "args": {{"drug_key": 0}}, "reason": "get gene targets"}}
+    {{"tool": "resolve_drugs", "args": {{"names": ["metformin"]}}, "reason": "resolve drug names"}}
+  ],
+  "stop_conditions": {{"no_relevant_tools": false, "sufficient_information": false}}
+}}
+
+Iteration 2+:
+{{
+  "thought": "Now I need to find metformin's gene targets to understand the mechanism.",
+  "observations": "Resolved metformin to drug_key=42. No AE data retrieved yet.",
+  "action_trace": "Resolved 1 drug (metformin=42)",
+  "calls": [
+    {{"tool": "get_drug_targets", "args": {{"drug_key": 42}}, "reason": "get gene targets"}}
   ],
   "stop_conditions": {{"no_relevant_tools": false, "sufficient_information": false}}
 }}

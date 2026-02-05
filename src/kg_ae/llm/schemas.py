@@ -73,6 +73,14 @@ class ToolPlan(BaseModel):
         ...,
         description="Reasoning about what information is needed and why these tools will help"
     )
+    observations: str | None = Field(
+        default=None,
+        description="What you learned from prior tool calls (iteration 2+). What patterns, entities, or gaps do you see?"
+    )
+    action_trace: str | None = Field(
+        default=None,
+        description="Brief summary of all steps taken so far (iteration 2+). e.g. 'Resolved 4 drugs -> Got AEs for metformin'"
+    )
     calls: list[ToolCall] = Field(
         default_factory=list,
         description="Ordered list of tool calls to execute (can be empty if stopping)"
