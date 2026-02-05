@@ -90,4 +90,3 @@ class ReactomeDownloader(BaseDownloader):
         for r in results:
             table.add_row(r.local_path.name, "[green]✓[/]")
         console.print(table)
-

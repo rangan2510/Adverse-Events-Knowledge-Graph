@@ -3,7 +3,7 @@ CTD dataset parser.
 
 Parses CTD TSV.gz files to extract:
 - Chemical-gene interactions
-- Chemical-disease associations  
+- Chemical-disease associations
 - Gene-disease associations
 
 CTD files have commented header lines (starting with #), and the actual
@@ -72,7 +72,7 @@ class CTDParser(BaseParser):
         count = 0
         opener = gzip.open if path.suffix == ".gz" else open
         mode = "rt" if path.suffix == ".gz" else "r"
-        
+
         with opener(path, mode, encoding="utf-8", errors="replace") as f:
             for line in f:
                 if line.startswith("#"):
@@ -95,11 +95,19 @@ class CTDParser(BaseParser):
         # ChemicalName, ChemicalID, CasRN, GeneSymbol, GeneID, GeneForms,
         # Organism, OrganismID, Interaction, InteractionActions, PubMedIDs
         columns = [
-            "chemical_name", "chemical_id", "cas_rn", "gene_symbol", "gene_id",
-            "gene_forms", "organism", "organism_id", "interaction",
-            "interaction_actions", "pubmed_ids"
+            "chemical_name",
+            "chemical_id",
+            "cas_rn",
+            "gene_symbol",
+            "gene_id",
+            "gene_forms",
+            "organism",
+            "organism_id",
+            "interaction",
+            "interaction_actions",
+            "pubmed_ids",
         ]
-        
+
         df = pl.read_csv(
             src,
             separator="\t",
@@ -131,10 +139,18 @@ class CTDParser(BaseParser):
         # ChemicalName, ChemicalID, CasRN, DiseaseName, DiseaseID,
         # DirectEvidence, InferenceGeneSymbol, InferenceScore, OmimIDs, PubMedIDs
         columns = [
-            "chemical_name", "chemical_id", "cas_rn", "disease_name", "disease_id",
-            "direct_evidence", "inference_gene", "inference_score", "omim_ids", "pubmed_ids"
+            "chemical_name",
+            "chemical_id",
+            "cas_rn",
+            "disease_name",
+            "disease_id",
+            "direct_evidence",
+            "inference_gene",
+            "inference_score",
+            "omim_ids",
+            "pubmed_ids",
         ]
-        
+
         df = pl.read_csv(
             src,
             separator="\t",
@@ -168,11 +184,17 @@ class CTDParser(BaseParser):
         # GeneSymbol, GeneID, DiseaseName, DiseaseID, DirectEvidence,
         # InferenceChemicalName, InferenceScore, OmimIDs, PubMedIDs
         columns = [
-            "gene_symbol", "gene_id", "disease_name", "disease_id",
-            "direct_evidence", "inference_chemical", "inference_score",
-            "omim_ids", "pubmed_ids"
+            "gene_symbol",
+            "gene_id",
+            "disease_name",
+            "disease_id",
+            "direct_evidence",
+            "inference_chemical",
+            "inference_score",
+            "omim_ids",
+            "pubmed_ids",
         ]
-        
+
         df = pl.read_csv(
             src,
             separator="\t",
@@ -206,11 +228,17 @@ class CTDParser(BaseParser):
         # ChemicalName, ChemicalID, CasRN, Definition, ParentIDs,
         # TreeNumbers, ParentTreeNumbers, Synonyms, DrugBankIDs
         columns = [
-            "chemical_name", "chemical_id", "cas_rn", "definition",
-            "parent_ids", "tree_numbers", "parent_tree_numbers",
-            "synonyms", "drugbank_ids"
+            "chemical_name",
+            "chemical_id",
+            "cas_rn",
+            "definition",
+            "parent_ids",
+            "tree_numbers",
+            "parent_tree_numbers",
+            "synonyms",
+            "drugbank_ids",
         ]
-        
+
         df = pl.read_csv(
             src,
             separator="\t",

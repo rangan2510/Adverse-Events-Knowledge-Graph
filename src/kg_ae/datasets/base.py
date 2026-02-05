@@ -174,6 +174,7 @@ class BaseLoader(ABC):
 
         # Insert and get the ID using SCOPE_IDENTITY
         from kg_ae.db import get_connection
+
         with get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -183,7 +184,11 @@ class BaseLoader(ABC):
                 VALUES (?, ?, ?, ?, ?);
                 SELECT SCOPE_IDENTITY();
                 """,
-                dataset_key, dataset_name, dataset_version, license_name, source_url,
+                dataset_key,
+                dataset_name,
+                dataset_version,
+                license_name,
+                source_url,
             )
             # Move to the SELECT result set
             cursor.nextset()

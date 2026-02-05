@@ -66,35 +66,34 @@ class HGNCParser(BaseParser):
             pubmed_ids = doc.get("pubmed_id", [])
             gene_groups = doc.get("gene_group", [])
 
-            records.append({
-                "hgnc_id": doc.get("hgnc_id"),  # e.g., "HGNC:5"
-                "symbol": doc.get("symbol"),
-                "name": doc.get("name"),
-                "locus_type": doc.get("locus_type"),
-                "locus_group": doc.get("locus_group"),
-                "status": doc.get("status"),
-                "location": doc.get("location"),
-                "ensembl_gene_id": doc.get("ensembl_gene_id"),
-                "entrez_id": str(doc["entrez_id"]) if doc.get("entrez_id") else None,
-                "uniprot_id": uniprot_ids[0] if uniprot_ids else None,
-                "uniprot_ids_json": json.dumps(uniprot_ids) if uniprot_ids else None,
-                "alias_symbols_json": json.dumps(alias_symbols) if alias_symbols else None,
-                "prev_symbols_json": json.dumps(prev_symbols) if prev_symbols else None,
-                "prev_names_json": json.dumps(prev_names) if prev_names else None,
-                "pubmed_ids_json": json.dumps(pubmed_ids) if pubmed_ids else None,
-                "gene_groups_json": json.dumps(gene_groups) if gene_groups else None,
-                "omim_id": doc.get("omim_id", [None])[0] if doc.get("omim_id") else None,
-                "mgd_id": doc.get("mgd_id", [None])[0] if doc.get("mgd_id") else None,
-                "rgd_id": doc.get("rgd_id", [None])[0] if doc.get("rgd_id") else None,
-            })
+            records.append(
+                {
+                    "hgnc_id": doc.get("hgnc_id"),  # e.g., "HGNC:5"
+                    "symbol": doc.get("symbol"),
+                    "name": doc.get("name"),
+                    "locus_type": doc.get("locus_type"),
+                    "locus_group": doc.get("locus_group"),
+                    "status": doc.get("status"),
+                    "location": doc.get("location"),
+                    "ensembl_gene_id": doc.get("ensembl_gene_id"),
+                    "entrez_id": str(doc["entrez_id"]) if doc.get("entrez_id") else None,
+                    "uniprot_id": uniprot_ids[0] if uniprot_ids else None,
+                    "uniprot_ids_json": json.dumps(uniprot_ids) if uniprot_ids else None,
+                    "alias_symbols_json": json.dumps(alias_symbols) if alias_symbols else None,
+                    "prev_symbols_json": json.dumps(prev_symbols) if prev_symbols else None,
+                    "prev_names_json": json.dumps(prev_names) if prev_names else None,
+                    "pubmed_ids_json": json.dumps(pubmed_ids) if pubmed_ids else None,
+                    "gene_groups_json": json.dumps(gene_groups) if gene_groups else None,
+                    "omim_id": doc.get("omim_id", [None])[0] if doc.get("omim_id") else None,
+                    "mgd_id": doc.get("mgd_id", [None])[0] if doc.get("mgd_id") else None,
+                    "rgd_id": doc.get("rgd_id", [None])[0] if doc.get("rgd_id") else None,
+                }
+            )
 
         df = pl.DataFrame(records)
 
         # Filter to approved genes with symbols
-        df = df.filter(
-            (pl.col("status") == "Approved") &
-            pl.col("symbol").is_not_null()
-        )
+        df = df.filter((pl.col("status") == "Approved") & pl.col("symbol").is_not_null())
 
         df.write_parquet(dest)
 

@@ -42,7 +42,7 @@ class OpenTargetsDownloader(BaseDownloader):
         Download Open Targets data files.
 
         Uses wget to download Parquet directories recursively.
-        
+
         Args:
             force: Re-download even if files exist
 
@@ -75,7 +75,7 @@ class OpenTargetsDownloader(BaseDownloader):
 
             console.print(f"  [yellow]Downloading[/] {dataset_name}...")
             self._download_dataset(dataset_name, dataset_dir)
-            
+
             parquet_files = list(dataset_dir.glob("*.parquet"))
             total_size = sum(f.stat().st_size for f in parquet_files)
             console.print(f"    [green]✓[/] {dataset_name} ({len(parquet_files)} files, {total_size:,} bytes)")
@@ -109,7 +109,7 @@ class OpenTargetsDownloader(BaseDownloader):
     def _download_dataset(self, dataset_name: str, dest_dir: Path) -> None:
         """
         Download a dataset directory using wget.
-        
+
         Open Targets datasets are partitioned Parquet directories.
         """
         import subprocess
@@ -130,7 +130,8 @@ class OpenTargetsDownloader(BaseDownloader):
             "--no-host-directories",
             "--cut-dirs=5",
             "--accept=*.parquet",
-            "-P", str(dest_dir.parent),
+            "-P",
+            str(dest_dir.parent),
             url,
         ]
 
@@ -148,7 +149,7 @@ class OpenTargetsDownloader(BaseDownloader):
     def _download_with_httpx(self, base_url: str, dest_dir: Path) -> None:
         """
         Download parquet files using httpx (fallback when wget unavailable).
-        
+
         Note: This is slower and may not handle all partitions.
         """
         import httpx
@@ -173,7 +174,7 @@ class OpenTargetsDownloader(BaseDownloader):
             if href.endswith(".parquet"):
                 file_url = base_url + href
                 file_path = dest_dir / href
-                
+
                 if not file_path.exists():
                     console.print(f"    [dim]Fetching[/] {href}...")
                     self._fetch_url(file_url, file_path)

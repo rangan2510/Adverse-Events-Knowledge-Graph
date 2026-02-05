@@ -69,33 +69,41 @@ class OpenTargetsNormalizer(BaseNormalizer):
         df = pl.read_parquet(diseases_path)
 
         # Rename columns to canonical
-        df = df.rename({
-            "id": "efo_id",  # Open Targets uses EFO IDs
-            "name": "label",
-        })
+        df = df.rename(
+            {
+                "id": "efo_id",  # Open Targets uses EFO IDs
+                "name": "label",
+            }
+        )
 
         # Extract MONDO and DOID from dbXRefs list
         # dbXRefs is a list of strings like ["MONDO:0005148", "DOID:9352", ...]
         if "dbXRefs" in df.columns:
-            df = df.with_columns([
-                # Extract MONDO ID
-                pl.col("dbXRefs").list.eval(
-                    pl.element().filter(pl.element().str.starts_with("MONDO:"))
-                ).list.first().alias("mondo_id"),
-                # Extract DOID
-                pl.col("dbXRefs").list.eval(
-                    pl.element().filter(pl.element().str.starts_with("DOID:"))
-                ).list.first().alias("doid"),
-            ])
+            df = df.with_columns(
+                [
+                    # Extract MONDO ID
+                    pl.col("dbXRefs")
+                    .list.eval(pl.element().filter(pl.element().str.starts_with("MONDO:")))
+                    .list.first()
+                    .alias("mondo_id"),
+                    # Extract DOID
+                    pl.col("dbXRefs")
+                    .list.eval(pl.element().filter(pl.element().str.starts_with("DOID:")))
+                    .list.first()
+                    .alias("doid"),
+                ]
+            )
 
         # Select final columns
-        df = df.select([
-            "efo_id",
-            "label",
-            pl.col("mondo_id").fill_null(""),
-            pl.col("doid").fill_null(""),
-            "description",
-        ])
+        df = df.select(
+            [
+                "efo_id",
+                "label",
+                pl.col("mondo_id").fill_null(""),
+                pl.col("doid").fill_null(""),
+                "description",
+            ]
+        )
 
         df.write_parquet(dest)
         console.print(f"    [green]✓[/] diseases: {len(df):,} rows")
@@ -114,10 +122,12 @@ class OpenTargetsNormalizer(BaseNormalizer):
         df = pl.read_parquet(associations_path)
 
         # Rename columns to canonical
-        df = df.rename({
-            "targetId": "ensembl_gene_id",
-            "diseaseId": "efo_id",
-        })
+        df = df.rename(
+            {
+                "targetId": "ensembl_gene_id",
+                "diseaseId": "efo_id",
+            }
+        )
 
         # Filter to high-confidence associations (score > 0.1)
         df = df.filter(pl.col("score") > 0.1)
@@ -139,32 +149,41 @@ class OpenTargetsNormalizer(BaseNormalizer):
         df = pl.read_parquet(targets_path)
 
         # Rename columns
-        df = df.rename({
-            "id": "ensembl_gene_id",
-            "approvedSymbol": "symbol",
-            "approvedName": "name",
-        })
+        df = df.rename(
+            {
+                "id": "ensembl_gene_id",
+                "approvedSymbol": "symbol",
+                "approvedName": "name",
+            }
+        )
 
         # Extract UniProt ID from proteinIds list
         # proteinIds is a list of structs with id and source fields
         if "proteinIds" in df.columns:
-            df = df.with_columns([
-                pl.col("proteinIds").list.eval(
-                    pl.element().struct.field("id").filter(
-                        pl.element().struct.field("source") == "uniprot_swissprot"
+            df = df.with_columns(
+                [
+                    pl.col("proteinIds")
+                    .list.eval(
+                        pl.element()
+                        .struct.field("id")
+                        .filter(pl.element().struct.field("source") == "uniprot_swissprot")
                     )
-                ).list.first().alias("uniprot_id"),
-            ])
+                    .list.first()
+                    .alias("uniprot_id"),
+                ]
+            )
         else:
             df = df.with_columns(pl.lit(None).alias("uniprot_id"))
 
         # Select final columns
-        df = df.select([
-            "ensembl_gene_id",
-            "symbol",
-            "name",
-            "uniprot_id",
-        ])
+        df = df.select(
+            [
+                "ensembl_gene_id",
+                "symbol",
+                "name",
+                "uniprot_id",
+            ]
+        )
 
         df.write_parquet(dest)
         console.print(f"    [green]✓[/] genes: {len(df):,} rows")

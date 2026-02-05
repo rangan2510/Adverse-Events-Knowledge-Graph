@@ -193,8 +193,16 @@ class HGNCLoader(BaseLoader):
                             updated_at = SYSUTCDATETIME()
                         WHERE gene_key = ?
                         """,
-                        (hgnc_id, symbol, ensembl_gene_id, safe_uniprot,
-                         synonyms_json, xrefs_json, meta_json, gene_key),
+                        (
+                            hgnc_id,
+                            symbol,
+                            ensembl_gene_id,
+                            safe_uniprot,
+                            synonyms_json,
+                            xrefs_json,
+                            meta_json,
+                            gene_key,
+                        ),
                     )
                     updated += 1
                 else:
@@ -230,8 +238,7 @@ class HGNCLoader(BaseLoader):
                         )
                         VALUES (?, ?, ?, ?, ?, ?, ?)
                         """,
-                        (hgnc_id, symbol, ensembl_gene_id, uniprot_id,
-                         synonyms_json, xrefs_json, meta_json),
+                        (hgnc_id, symbol, ensembl_gene_id, uniprot_id, synonyms_json, xrefs_json, meta_json),
                     )
                     inserted += 1
 

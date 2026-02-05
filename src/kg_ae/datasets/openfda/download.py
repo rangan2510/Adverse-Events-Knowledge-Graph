@@ -109,7 +109,7 @@ class OpenFDADownloader(BaseDownloader):
                     progress.update(task, advance=1, description=f"[dim]{subdir} (skip)")
                     sha256 = self._compute_sha256(dest)
                 else:
-                    progress.update(task, description=f"[cyan]{subdir} ({i+1}/{total_parts})")
+                    progress.update(task, description=f"[cyan]{subdir} ({i + 1}/{total_parts})")
                     try:
                         self._fetch_url(url, dest, timeout=600.0)  # 10 min timeout for large files
                         sha256 = self._compute_sha256(dest)

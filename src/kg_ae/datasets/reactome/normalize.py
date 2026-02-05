@@ -73,10 +73,12 @@ class ReactomeNormalizer(BaseNormalizer):
         df = df.filter(pl.col("species") == "Homo sapiens")
 
         # Rename to canonical
-        df = df.rename({
-            "pathway_id": "reactome_id",
-            "pathway_name": "label",
-        }).select(["reactome_id", "label"])
+        df = df.rename(
+            {
+                "pathway_id": "reactome_id",
+                "pathway_name": "label",
+            }
+        ).select(["reactome_id", "label"])
 
         df.write_parquet(dest)
         console.print(f"    [green]✓[/] pathways: {len(df):,} rows")
@@ -98,18 +100,22 @@ class ReactomeNormalizer(BaseNormalizer):
         df = df.filter(pl.col("species") == "Homo sapiens")
 
         # Rename to canonical
-        df = df.rename({
-            "pathway_id": "reactome_id",
-            "pathway_name": "pathway_label",
-        })
+        df = df.rename(
+            {
+                "pathway_id": "reactome_id",
+                "pathway_name": "pathway_label",
+            }
+        )
 
         # Select relevant columns
-        df = df.select([
-            "uniprot_id",
-            "reactome_id",
-            "pathway_label",
-            "evidence_code",
-        ])
+        df = df.select(
+            [
+                "uniprot_id",
+                "reactome_id",
+                "pathway_label",
+                "evidence_code",
+            ]
+        )
 
         # Get unique gene-pathway pairs
         df = df.unique(subset=["uniprot_id", "reactome_id"])
@@ -138,16 +144,15 @@ class ReactomeNormalizer(BaseNormalizer):
             human_ids = set(human_pathways["reactome_id"].to_list())
 
             # Keep only relations where both parent and child are human pathways
-            df = df.filter(
-                pl.col("parent_pathway_id").is_in(human_ids)
-                & pl.col("child_pathway_id").is_in(human_ids)
-            )
+            df = df.filter(pl.col("parent_pathway_id").is_in(human_ids) & pl.col("child_pathway_id").is_in(human_ids))
 
         # Rename to canonical
-        df = df.rename({
-            "parent_pathway_id": "parent_reactome_id",
-            "child_pathway_id": "child_reactome_id",
-        })
+        df = df.rename(
+            {
+                "parent_pathway_id": "parent_reactome_id",
+                "child_pathway_id": "child_reactome_id",
+            }
+        )
 
         df.write_parquet(dest)
         console.print(f"    [green]✓[/] hierarchy: {len(df):,} rows")

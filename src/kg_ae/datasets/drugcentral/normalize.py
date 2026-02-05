@@ -82,13 +82,9 @@ class DrugCentralNormalizer(BaseNormalizer):
             # Join on DrugCentral ID if column exists
             if "drugcentral_id" in df.columns and "ID" in df_approved.columns:
                 df_approved = df_approved.rename({"ID": "drugcentral_id"})
-                df_approved = df_approved.select(["drugcentral_id"]).with_columns(
-                    pl.lit(True).alias("is_approved")
-                )
+                df_approved = df_approved.select(["drugcentral_id"]).with_columns(pl.lit(True).alias("is_approved"))
                 df = df.join(df_approved, on="drugcentral_id", how="left")
-                df = df.with_columns(
-                    pl.col("is_approved").fill_null(False)
-                )
+                df = df.with_columns(pl.col("is_approved").fill_null(False))
 
         df.write_parquet(dest)
         console.print(f"    [green]✓[/] drugs: {len(df):,} rows → {dest.name}")
@@ -136,13 +132,9 @@ class DrugCentralNormalizer(BaseNormalizer):
 
         # Handle multi-value fields (take first)
         if "uniprot_id" in df_genes.columns:
-            df_genes = df_genes.with_columns(
-                pl.col("uniprot_id").str.split("|").list.first()
-            )
+            df_genes = df_genes.with_columns(pl.col("uniprot_id").str.split("|").list.first())
         if "symbol" in df_genes.columns:
-            df_genes = df_genes.with_columns(
-                pl.col("symbol").str.split("|").list.first()
-            )
+            df_genes = df_genes.with_columns(pl.col("symbol").str.split("|").list.first())
 
         df_genes.write_parquet(dest)
         console.print(f"    [green]✓[/] genes: {len(df_genes):,} rows → {dest.name}")
@@ -185,13 +177,9 @@ class DrugCentralNormalizer(BaseNormalizer):
 
         # Handle multi-value fields (take first)
         if "gene_symbol" in df.columns:
-            df = df.with_columns(
-                pl.col("gene_symbol").str.split("|").list.first()
-            )
+            df = df.with_columns(pl.col("gene_symbol").str.split("|").list.first())
         if "uniprot_id" in df.columns:
-            df = df.with_columns(
-                pl.col("uniprot_id").str.split("|").list.first()
-            )
+            df = df.with_columns(pl.col("uniprot_id").str.split("|").list.first())
 
         df.write_parquet(dest)
         console.print(f"    [green]✓[/] interactions: {len(df):,} rows → {dest.name}")

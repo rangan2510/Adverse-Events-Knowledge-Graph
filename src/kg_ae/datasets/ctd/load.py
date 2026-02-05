@@ -3,7 +3,7 @@ CTD dataset loader.
 
 Loads CTD curated data into SQL Server graph tables:
 - Chemical-gene interactions → DRUG_GENE_CTD claims
-- Chemical-disease associations → DRUG_DISEASE_CTD claims  
+- Chemical-disease associations → DRUG_DISEASE_CTD claims
 - Gene-disease associations → GENE_DISEASE_CTD claims
 
 Optimized with preloaded caches for fast name→key lookups.
@@ -107,7 +107,7 @@ class CTDLoader(BaseLoader):
         # Truncate label if too long
         if len(label) > 400:
             label = label[:397] + "..."
-        
+
         # Parse disease_id for MESH/OMIM
         xrefs = {}
         if disease_id:
@@ -126,7 +126,7 @@ class CTDLoader(BaseLoader):
             """,
             (label, json.dumps(xrefs) if xrefs else None),
         )
-        
+
         if disease_key:
             self._disease_cache[label.lower()] = disease_key
         return disease_key
@@ -170,7 +170,7 @@ class CTDLoader(BaseLoader):
             gd_stats = self._load_gene_disease(gene_disease_path, dataset_id)
             stats.update(gd_stats)
 
-        # Load chemical-disease associations  
+        # Load chemical-disease associations
         chem_disease_path = self.bronze_dir / "chem_disease.parquet"
         if chem_disease_path.exists():
             cd_stats = self._load_chem_disease(chem_disease_path, dataset_id)
@@ -196,28 +196,33 @@ class CTDLoader(BaseLoader):
 
         # Pre-filter using caches to avoid iterating over all 1.3M rows
         # Create lookup DataFrames from caches
-        drug_lookup = pl.DataFrame({
-            "chemical_name_lower": list(self._drug_cache.keys()),
-            "drug_key": list(self._drug_cache.values()),
-        })
-        gene_lookup = pl.DataFrame({
-            "gene_symbol_upper": list(self._gene_cache.keys()),
-            "gene_key": list(self._gene_cache.values()),
-        })
+        drug_lookup = pl.DataFrame(
+            {
+                "chemical_name_lower": list(self._drug_cache.keys()),
+                "drug_key": list(self._drug_cache.values()),
+            }
+        )
+        gene_lookup = pl.DataFrame(
+            {
+                "gene_symbol_upper": list(self._gene_cache.keys()),
+                "gene_key": list(self._gene_cache.values()),
+            }
+        )
 
         # Add lowercase/uppercase columns and join
         df_filtered = (
-            df
-            .with_columns([
-                pl.col("chemical_name").str.to_lowercase().alias("chemical_name_lower"),
-                pl.col("gene_symbol").str.to_uppercase().alias("gene_symbol_upper"),
-            ])
+            df.with_columns(
+                [
+                    pl.col("chemical_name").str.to_lowercase().alias("chemical_name_lower"),
+                    pl.col("gene_symbol").str.to_uppercase().alias("gene_symbol_upper"),
+                ]
+            )
             .join(drug_lookup, on="chemical_name_lower", how="inner")
             .join(gene_lookup, on="gene_symbol_upper", how="inner")
         )
 
         match_count = len(df_filtered)
-        console.print(f"    [dim]Matched {match_count:,} / {total:,} rows ({100*match_count/total:.1f}%)[/]")
+        console.print(f"    [dim]Matched {match_count:,} / {total:,} rows ({100 * match_count / total:.1f}%)[/]")
 
         if match_count == 0:
             console.print("  [loaded] chem-gene: 0 claims")
@@ -235,9 +240,7 @@ class CTDLoader(BaseLoader):
                     gene_key = row["gene_key"]
 
                     # Create claim
-                    claim_key = self._create_chem_gene_claim(
-                        drug_key, gene_key, row, dataset_id
-                    )
+                    claim_key = self._create_chem_gene_claim(drug_key, gene_key, row, dataset_id)
                     if claim_key:
                         claims_created += 1
 
@@ -251,9 +254,7 @@ class CTDLoader(BaseLoader):
         console.print(f"    [green]✓[/] chem-gene: {claims_created:,} claims")
         return {"chem_gene_claims": claims_created}
 
-    def _create_chem_gene_claim(
-        self, drug_key: int, gene_key: int, row: dict, dataset_id: int
-    ) -> int | None:
+    def _create_chem_gene_claim(self, drug_key: int, gene_key: int, row: dict, dataset_id: int) -> int | None:
         """Create a chemical-gene interaction claim."""
         interaction = row.get("interaction", "")
         actions = row.get("interaction_actions", "")
@@ -324,22 +325,22 @@ class CTDLoader(BaseLoader):
         console.print(f"  [yellow]Processing[/] {total:,} gene-disease associations...")
 
         # Pre-filter genes using cache
-        gene_lookup = pl.DataFrame({
-            "gene_symbol_upper": list(self._gene_cache.keys()),
-            "gene_key": list(self._gene_cache.values()),
-        })
-
-        df_filtered = (
-            df
-            .with_columns([
-                pl.col("gene_symbol").str.to_uppercase().alias("gene_symbol_upper"),
-                pl.col("disease_name").str.to_lowercase().alias("disease_name_lower"),
-            ])
-            .join(gene_lookup, on="gene_symbol_upper", how="inner")
+        gene_lookup = pl.DataFrame(
+            {
+                "gene_symbol_upper": list(self._gene_cache.keys()),
+                "gene_key": list(self._gene_cache.values()),
+            }
         )
 
+        df_filtered = df.with_columns(
+            [
+                pl.col("gene_symbol").str.to_uppercase().alias("gene_symbol_upper"),
+                pl.col("disease_name").str.to_lowercase().alias("disease_name_lower"),
+            ]
+        ).join(gene_lookup, on="gene_symbol_upper", how="inner")
+
         match_count = len(df_filtered)
-        console.print(f"    [dim]Matched {match_count:,} / {total:,} gene rows ({100*match_count/total:.1f}%)[/]")
+        console.print(f"    [dim]Matched {match_count:,} / {total:,} gene rows ({100 * match_count / total:.1f}%)[/]")
 
         if match_count == 0:
             console.print("  [loaded] gene-disease: 0 claims")
@@ -365,9 +366,7 @@ class CTDLoader(BaseLoader):
                     # Find or create disease
                     disease_key = self._disease_cache.get(disease_name_lower)
                     if not disease_key:
-                        disease_key = self._create_disease(
-                            disease_name, row.get("disease_id")
-                        )
+                        disease_key = self._create_disease(disease_name, row.get("disease_id"))
                         if disease_key:
                             diseases_created += 1
                         else:
@@ -375,9 +374,7 @@ class CTDLoader(BaseLoader):
                             continue
 
                     # Create claim
-                    claim_key = self._create_gene_disease_claim(
-                        gene_key, disease_key, row, dataset_id
-                    )
+                    claim_key = self._create_gene_disease_claim(gene_key, disease_key, row, dataset_id)
                     if claim_key:
                         claims_created += 1
 
@@ -391,9 +388,7 @@ class CTDLoader(BaseLoader):
         console.print(f"    [green]✓[/] gene-disease: {claims_created:,} claims, {diseases_created:,} new diseases")
         return {"gene_disease_ctd_claims": claims_created, "diseases_created": diseases_created}
 
-    def _create_gene_disease_claim(
-        self, gene_key: int, disease_key: int, row: dict, dataset_id: int
-    ) -> int | None:
+    def _create_gene_disease_claim(self, gene_key: int, disease_key: int, row: dict, dataset_id: int) -> int | None:
         """Create a gene-disease association claim."""
         direct_evidence = row.get("direct_evidence", "")
         pubmed_ids = row.get("pubmed_ids", "")
@@ -452,22 +447,22 @@ class CTDLoader(BaseLoader):
         console.print(f"  [yellow]Processing[/] {total:,} chemical-disease associations...")
 
         # Pre-filter using drug cache
-        drug_lookup = pl.DataFrame({
-            "chemical_name_lower": list(self._drug_cache.keys()),
-            "drug_key": list(self._drug_cache.values()),
-        })
-
-        df_filtered = (
-            df
-            .with_columns([
-                pl.col("chemical_name").str.to_lowercase().alias("chemical_name_lower"),
-                pl.col("disease_name").str.to_lowercase().alias("disease_name_lower"),
-            ])
-            .join(drug_lookup, on="chemical_name_lower", how="inner")
+        drug_lookup = pl.DataFrame(
+            {
+                "chemical_name_lower": list(self._drug_cache.keys()),
+                "drug_key": list(self._drug_cache.values()),
+            }
         )
 
+        df_filtered = df.with_columns(
+            [
+                pl.col("chemical_name").str.to_lowercase().alias("chemical_name_lower"),
+                pl.col("disease_name").str.to_lowercase().alias("disease_name_lower"),
+            ]
+        ).join(drug_lookup, on="chemical_name_lower", how="inner")
+
         match_count = len(df_filtered)
-        console.print(f"    [dim]Matched {match_count:,} / {total:,} drug rows ({100*match_count/total:.1f}%)[/]")
+        console.print(f"    [dim]Matched {match_count:,} / {total:,} drug rows ({100 * match_count / total:.1f}%)[/]")
 
         if match_count == 0:
             console.print("  [loaded] chem-disease: 0 claims")
@@ -493,9 +488,7 @@ class CTDLoader(BaseLoader):
                     # Find or create disease
                     disease_key = self._disease_cache.get(disease_name_lower)
                     if not disease_key:
-                        disease_key = self._create_disease(
-                            disease_name, row.get("disease_id")
-                        )
+                        disease_key = self._create_disease(disease_name, row.get("disease_id"))
                         if disease_key:
                             diseases_created += 1
                         else:
@@ -503,9 +496,7 @@ class CTDLoader(BaseLoader):
                             continue
 
                     # Create claim
-                    claim_key = self._create_chem_disease_claim(
-                        drug_key, disease_key, row, dataset_id
-                    )
+                    claim_key = self._create_chem_disease_claim(drug_key, disease_key, row, dataset_id)
                     if claim_key:
                         claims_created += 1
 
@@ -519,9 +510,7 @@ class CTDLoader(BaseLoader):
         console.print(f"    [green]✓[/] chem-disease: {claims_created:,} claims, {diseases_created:,} new diseases")
         return {"chem_disease_claims": claims_created}
 
-    def _create_chem_disease_claim(
-        self, drug_key: int, disease_key: int, row: dict, dataset_id: int
-    ) -> int | None:
+    def _create_chem_disease_claim(self, drug_key: int, disease_key: int, row: dict, dataset_id: int) -> int | None:
         """Create a chemical-disease association claim."""
         direct_evidence = row.get("direct_evidence", "")
         pubmed_ids = row.get("pubmed_ids", "")

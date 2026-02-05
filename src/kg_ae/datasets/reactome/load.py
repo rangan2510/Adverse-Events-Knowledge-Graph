@@ -53,7 +53,7 @@ class ReactomeLoader(BaseLoader):
         table.add_column("Entity", style="cyan")
         table.add_column("Count", justify="right", style="green")
         for entity, count in results.items():
-            table.add_row(entity.replace('_', ' ').title(), f"{count:,}")
+            table.add_row(entity.replace("_", " ").title(), f"{count:,}")
         console.print(table)
 
         return results
@@ -145,10 +145,12 @@ class ReactomeLoader(BaseLoader):
             pathway_node_id = pathway_result[0][0]
 
             # Create claim
-            claim_meta = json.dumps({
-                "evidence_code": evidence_code,
-                "source": "reactome",
-            })
+            claim_meta = json.dumps(
+                {
+                    "evidence_code": evidence_code,
+                    "source": "reactome",
+                }
+            )
             self._execute(
                 """
                 INSERT INTO kg.Claim (claim_type, dataset_id, meta_json)

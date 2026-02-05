@@ -86,7 +86,7 @@ class OpenFDALoader(BaseLoader):
             table.add_column("Metric", style="cyan")
             table.add_column("Count", justify="right", style="green")
             for metric, count in stats.items():
-                table.add_row(metric.replace('_', ' ').title(), f"{count:,}")
+                table.add_row(metric.replace("_", " ").title(), f"{count:,}")
             console.print(table)
 
         return stats
@@ -128,9 +128,7 @@ class OpenFDALoader(BaseLoader):
                         evidence_created += 1
 
                         # Create claim linking drug to label
-                        claim_key = self._create_label_claim(
-                            drug_key, row, evidence_key, dataset_id
-                        )
+                        claim_key = self._create_label_claim(drug_key, row, evidence_key, dataset_id)
                         if claim_key:
                             claims_created += 1
 
@@ -142,8 +140,10 @@ class OpenFDALoader(BaseLoader):
 
                 progress.update(task, advance=1)
 
-        console.print(f"    [green]✓[/] Labels: {drugs_created} new drugs, {drugs_matched} matched, "
-              f"{claims_created} claims, {evidence_created} evidence, {skipped} skipped")
+        console.print(
+            f"    [green]✓[/] Labels: {drugs_created} new drugs, {drugs_matched} matched, "
+            f"{claims_created} claims, {evidence_created} evidence, {skipped} skipped"
+        )
 
         return {
             "label_drugs_created": drugs_created,
@@ -155,7 +155,7 @@ class OpenFDALoader(BaseLoader):
     def _ensure_drug(self, row: dict) -> int | None:
         """
         Find or signal need to create drug.
-        
+
         Returns:
             drug_key if found, -1 if should create, None if skip
         """
@@ -187,7 +187,7 @@ class OpenFDALoader(BaseLoader):
         """Create a new drug node from label data."""
         generic_name = row.get("generic_name")
         brand_name = row.get("brand_name")
-        
+
         preferred_name = generic_name or brand_name
 
         # Build synonyms from brand names
@@ -265,9 +265,7 @@ class OpenFDALoader(BaseLoader):
         )
         return evidence_key
 
-    def _create_label_claim(
-        self, drug_key: int, row: dict, evidence_key: int, dataset_id: int
-    ) -> int | None:
+    def _create_label_claim(self, drug_key: int, row: dict, evidence_key: int, dataset_id: int) -> int | None:
         """Create claim linking drug to its label info."""
         # Determine claim strength based on content
         has_boxed = bool(row.get("boxed_warning"))

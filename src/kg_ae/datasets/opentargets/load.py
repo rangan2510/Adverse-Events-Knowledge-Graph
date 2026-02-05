@@ -57,7 +57,7 @@ class OpenTargetsLoader(BaseLoader):
         table.add_column("Entity", style="cyan")
         table.add_column("Count", justify="right", style="green")
         for entity, count in results.items():
-            table.add_row(entity.replace('_', ' ').title(), f"{count:,}")
+            table.add_row(entity.replace("_", " ").title(), f"{count:,}")
         console.print(table)
 
         return results
@@ -185,7 +185,7 @@ class OpenTargetsLoader(BaseLoader):
                 """,
                 (ensembl_gene_id, uniprot_id, symbol),
             )
-            
+
             # Also try by UniProt ID
             if uniprot_id:
                 self._execute(
@@ -198,7 +198,7 @@ class OpenTargetsLoader(BaseLoader):
                     """,
                     (ensembl_gene_id, symbol, uniprot_id),
                 )
-            
+
             count += 1
 
         console.print(f"    [green]✓[/] Genes updated: {count:,}")
@@ -254,10 +254,12 @@ class OpenTargetsLoader(BaseLoader):
             disease_node_id = disease_result[0][0]
 
             # Create claim
-            claim_meta = json.dumps({
-                "score": score,
-                "source": "opentargets",
-            })
+            claim_meta = json.dumps(
+                {
+                    "score": score,
+                    "source": "opentargets",
+                }
+            )
             self._execute(
                 """
                 INSERT INTO kg.Claim (claim_type, strength_score, dataset_id, meta_json)

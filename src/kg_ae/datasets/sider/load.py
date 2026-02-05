@@ -90,11 +90,13 @@ class SiderLoader(BaseLoader):
                 "stitch_id": row["stitch_id"],
                 "stitch_numeric": row["stitch_numeric"],
             }
-            insert_data.append((
-                row["preferred_name"],
-                row["pubchem_cid"] if row["pubchem_cid"] and row["pubchem_cid"] > 0 else None,
-                json.dumps(xrefs),
-            ))
+            insert_data.append(
+                (
+                    row["preferred_name"],
+                    row["pubchem_cid"] if row["pubchem_cid"] and row["pubchem_cid"] > 0 else None,
+                    json.dumps(xrefs),
+                )
+            )
 
         # Use MERGE to handle duplicates (by pubchem_cid)
         with get_connection() as conn:

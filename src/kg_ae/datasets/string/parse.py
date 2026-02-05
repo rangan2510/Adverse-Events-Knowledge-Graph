@@ -53,13 +53,13 @@ class STRINGParser:
             self.raw_dir / "9606.protein.aliases.v12.0.txt.gz",
             self.raw_dir / "9606.protein.aliases.v11.5.txt.gz",
         ]
-        
+
         src = None
         for pattern in src_patterns:
             if pattern.exists():
                 src = pattern
                 break
-        
+
         if not src:
             console.print("  [skip] protein.aliases not found")
             return None
@@ -82,23 +82,27 @@ class STRINGParser:
         # Priority: BioMart_HUGO > Ensembl_gene > BLAST_UniProt_GN
         symbol_sources = [
             "BioMart_HUGO",
-            "Ensembl_gene", 
+            "Ensembl_gene",
             "BLAST_UniProt_GN",
             "Ensembl_HGNC_symbol",
         ]
-        
+
         df_symbols = df.filter(pl.col("source").is_in(symbol_sources))
-        
+
         # Keep best alias per protein (prefer HUGO)
         df_best = (
-            df_symbols
-            .with_columns([
-                pl.when(pl.col("source") == "BioMart_HUGO").then(1)
-                .when(pl.col("source") == "Ensembl_HGNC_symbol").then(2)
-                .when(pl.col("source") == "Ensembl_gene").then(3)
-                .otherwise(4)
-                .alias("priority")
-            ])
+            df_symbols.with_columns(
+                [
+                    pl.when(pl.col("source") == "BioMart_HUGO")
+                    .then(1)
+                    .when(pl.col("source") == "Ensembl_HGNC_symbol")
+                    .then(2)
+                    .when(pl.col("source") == "Ensembl_gene")
+                    .then(3)
+                    .otherwise(4)
+                    .alias("priority")
+                ]
+            )
             .sort("priority")
             .group_by("string_id")
             .first()
@@ -116,13 +120,13 @@ class STRINGParser:
             self.raw_dir / "9606.protein.links.v12.0.txt.gz",
             self.raw_dir / "9606.protein.links.v11.5.txt.gz",
         ]
-        
+
         src = None
         for pattern in src_patterns:
             if pattern.exists():
                 src = pattern
                 break
-        
+
         if not src:
             console.print("  [skip] protein.links not found")
             return None
@@ -151,26 +155,14 @@ class STRINGParser:
         # Load alias mapping if available
         if alias_path.exists():
             aliases = pl.read_parquet(alias_path)
-            
+
             # Join to get gene symbols for both proteins
-            df = (
-                df
-                .join(
-                    aliases.rename({"string_id": "protein1", "gene_symbol": "gene1"}),
-                    on="protein1",
-                    how="left"
-                )
-                .join(
-                    aliases.rename({"string_id": "protein2", "gene_symbol": "gene2"}),
-                    on="protein2", 
-                    how="left"
-                )
-            )
+            df = df.join(
+                aliases.rename({"string_id": "protein1", "gene_symbol": "gene1"}), on="protein1", how="left"
+            ).join(aliases.rename({"string_id": "protein2", "gene_symbol": "gene2"}), on="protein2", how="left")
 
             # Keep only rows where both proteins have gene symbols
-            df_mapped = df.filter(
-                pl.col("gene1").is_not_null() & pl.col("gene2").is_not_null()
-            )
+            df_mapped = df.filter(pl.col("gene1").is_not_null() & pl.col("gene2").is_not_null())
             console.print(f"    With gene symbols: {len(df_mapped):,}")
             df = df_mapped
 

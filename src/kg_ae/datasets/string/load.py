@@ -100,42 +100,48 @@ class STRINGLoader(BaseLoader):
         console.print(f"  [load] Processing {total:,} protein-protein interactions...")
 
         # Pre-filter using gene cache (both genes must exist)
-        gene_lookup = pl.DataFrame({
-            "gene_upper": list(self._gene_cache.keys()),
-            "gene_key": list(self._gene_cache.values()),
-        })
+        gene_lookup = pl.DataFrame(
+            {
+                "gene_upper": list(self._gene_cache.keys()),
+                "gene_key": list(self._gene_cache.values()),
+            }
+        )
 
         df_filtered = (
-            df
-            .with_columns([
-                pl.col("gene1").str.to_uppercase().alias("gene1_upper"),
-                pl.col("gene2").str.to_uppercase().alias("gene2_upper"),
-            ])
+            df.with_columns(
+                [
+                    pl.col("gene1").str.to_uppercase().alias("gene1_upper"),
+                    pl.col("gene2").str.to_uppercase().alias("gene2_upper"),
+                ]
+            )
             .join(
                 gene_lookup.rename({"gene_upper": "gene1_upper", "gene_key": "gene1_key"}),
                 on="gene1_upper",
-                how="inner"
+                how="inner",
             )
             .join(
                 gene_lookup.rename({"gene_upper": "gene2_upper", "gene_key": "gene2_key"}),
                 on="gene2_upper",
-                how="inner"
+                how="inner",
             )
         )
 
         # Remove self-interactions and duplicates (A-B and B-A)
         df_filtered = (
-            df_filtered
-            .filter(pl.col("gene1_key") != pl.col("gene2_key"))
-            .with_columns([
-                pl.min_horizontal("gene1_key", "gene2_key").alias("min_key"),
-                pl.max_horizontal("gene1_key", "gene2_key").alias("max_key"),
-            ])
+            df_filtered.filter(pl.col("gene1_key") != pl.col("gene2_key"))
+            .with_columns(
+                [
+                    pl.min_horizontal("gene1_key", "gene2_key").alias("min_key"),
+                    pl.max_horizontal("gene1_key", "gene2_key").alias("max_key"),
+                ]
+            )
             .unique(subset=["min_key", "max_key"])
         )
 
         match_count = len(df_filtered)
-        console.print(f"    [dim]Matched {match_count:,} / {total:,} interactions ({100*match_count/total:.1f}%)[/]")
+        console.print(
+            f"    [dim]Matched {match_count:,} / {total:,} interactions ({100 * match_count / total:.1f}%)[/]"
+        )
 
         if match_count == 0:
             console.print("  [loaded] links: 0 claims")
@@ -172,13 +178,15 @@ class STRINGLoader(BaseLoader):
                 for row in batch:
                     score_norm = row["combined_score"] / 1000.0
                     source_id = f"{row['protein1']}_{row['protein2']}"
-                    stmt_json = json.dumps({
-                        "gene1": row["gene1"],
-                        "gene2": row["gene2"],
-                        "protein1": row["protein1"],
-                        "protein2": row["protein2"],
-                        "combined_score": row["combined_score"],
-                    }).replace("'", "''")
+                    stmt_json = json.dumps(
+                        {
+                            "gene1": row["gene1"],
+                            "gene2": row["gene2"],
+                            "protein1": row["protein1"],
+                            "protein2": row["protein2"],
+                            "combined_score": row["combined_score"],
+                        }
+                    ).replace("'", "''")
                     claim_values.append(
                         f"('GENE_GENE_STRING', {score_norm}, {dataset_id}, '{source_id}', N'{stmt_json}')"
                     )
@@ -187,7 +195,7 @@ class STRINGLoader(BaseLoader):
                 claim_sql = f"""
                     INSERT INTO kg.Claim (claim_type, strength_score, dataset_id, source_record_id, statement_json)
                     OUTPUT INSERTED.claim_key
-                    VALUES {', '.join(claim_values)}
+                    VALUES {", ".join(claim_values)}
                 """
                 claim_results = self._execute(claim_sql)
                 claim_keys = [r[0] for r in claim_results]
@@ -235,5 +243,3 @@ class STRINGLoader(BaseLoader):
 
         console.print(f"  [loaded] links: {claims_created:,} claims")
         return {"gene_gene_string_claims": claims_created}
-
-

@@ -96,33 +96,37 @@ class GtoPdbParser(BaseParser):
         dest = self.bronze_dir / "ligands.parquet"
 
         # Select and rename relevant columns
-        df = df.select([
-            pl.col("Ligand ID").alias("ligand_id"),
-            pl.col("Name").alias("name"),
-            pl.col("Species").alias("species"),
-            pl.col("Type").alias("ligand_type"),
-            pl.col("Approved").alias("approved"),
-            pl.col("PubChem SID").alias("pubchem_sid"),
-            pl.col("PubChem CID").alias("pubchem_cid"),
-            pl.col("ChEMBL ID").alias("chembl_id"),
-            pl.col("UniProt ID").alias("uniprot_id"),
-            pl.col("Ensembl ID").alias("ensembl_id"),
-            pl.col("INN").alias("inn"),
-            pl.col("Synonyms").alias("synonyms"),
-            pl.col("SMILES").alias("smiles"),
-            pl.col("InChIKey").alias("inchikey"),
-            pl.col("IUPAC name").alias("iupac_name"),
-        ])
+        df = df.select(
+            [
+                pl.col("Ligand ID").alias("ligand_id"),
+                pl.col("Name").alias("name"),
+                pl.col("Species").alias("species"),
+                pl.col("Type").alias("ligand_type"),
+                pl.col("Approved").alias("approved"),
+                pl.col("PubChem SID").alias("pubchem_sid"),
+                pl.col("PubChem CID").alias("pubchem_cid"),
+                pl.col("ChEMBL ID").alias("chembl_id"),
+                pl.col("UniProt ID").alias("uniprot_id"),
+                pl.col("Ensembl ID").alias("ensembl_id"),
+                pl.col("INN").alias("inn"),
+                pl.col("Synonyms").alias("synonyms"),
+                pl.col("SMILES").alias("smiles"),
+                pl.col("InChIKey").alias("inchikey"),
+                pl.col("IUPAC name").alias("iupac_name"),
+            ]
+        )
 
         # Filter to small molecules and approved drugs (most useful)
         # Keep all types for now but flag approved
         # GtoPdb uses 'yes' for approved drugs
-        df = df.with_columns([
-            pl.when(pl.col("approved").str.to_lowercase() == "yes")
-            .then(pl.lit(True))
-            .otherwise(pl.lit(False))
-            .alias("is_approved"),
-        ])
+        df = df.with_columns(
+            [
+                pl.when(pl.col("approved").str.to_lowercase() == "yes")
+                .then(pl.lit(True))
+                .otherwise(pl.lit(False))
+                .alias("is_approved"),
+            ]
+        )
 
         df.write_parquet(dest)
         approved_count = df.filter(pl.col("is_approved")).height
@@ -178,12 +182,14 @@ class GtoPdbParser(BaseParser):
 
         dest = self.bronze_dir / "hgnc_mapping.parquet"
 
-        df = df.select([
-            pl.col("HGNC Symbol").alias("hgnc_symbol"),
-            pl.col("HGNC ID").alias("hgnc_numeric_id"),  # numeric part only
-            pl.col("IUPHAR Name").alias("iuphar_name"),
-            pl.col("IUPHAR ID").alias("iuphar_id"),  # = target_id
-        ])
+        df = df.select(
+            [
+                pl.col("HGNC Symbol").alias("hgnc_symbol"),
+                pl.col("HGNC ID").alias("hgnc_numeric_id"),  # numeric part only
+                pl.col("IUPHAR Name").alias("iuphar_name"),
+                pl.col("IUPHAR ID").alias("iuphar_id"),  # = target_id
+            ]
+        )
 
         df.write_parquet(dest)
         console.print(f"    [green]✓[/] hgnc_mapping: {len(df):,} rows")
@@ -239,9 +245,7 @@ class GtoPdbParser(BaseParser):
         # Convert affinity to numeric
         for col in ["affinity_median", "affinity_high", "affinity_low"]:
             if col in df.columns:
-                df = df.with_columns([
-                    pl.col(col).cast(pl.Float64, strict=False).alias(col)
-                ])
+                df = df.with_columns([pl.col(col).cast(pl.Float64, strict=False).alias(col)])
 
         df.write_parquet(dest)
         console.print(f"    [green]✓[/] interactions: {len(df):,} human interactions")

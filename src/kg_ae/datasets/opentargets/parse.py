@@ -75,13 +75,15 @@ class OpenTargetsParser(BaseParser):
 
         # Use lazy loading for efficiency with large datasets
         df = pl.scan_parquet(src_dir / "*.parquet")
-        
+
         # Select key columns and collect
-        df = df.select([
-            "targetId",
-            "diseaseId", 
-            "score",
-        ]).collect()
+        df = df.select(
+            [
+                "targetId",
+                "diseaseId",
+                "score",
+            ]
+        ).collect()
 
         df.write_parquet(dest)
         console.print(f"    [green]✓[/] associations: {len(df):,} rows")
@@ -104,12 +106,14 @@ class OpenTargetsParser(BaseParser):
 
         # Select key columns - check what's available
         # Common columns: id, name, description, synonyms, dbXRefs
-        df = df.select([
-            "id",
-            "name",
-            "description",
-            "dbXRefs",  # Contains MONDO, DOID, etc.
-        ]).collect()
+        df = df.select(
+            [
+                "id",
+                "name",
+                "description",
+                "dbXRefs",  # Contains MONDO, DOID, etc.
+            ]
+        ).collect()
 
         df.write_parquet(dest)
         console.print(f"    [green]✓[/] diseases: {len(df):,} rows")
@@ -132,12 +136,14 @@ class OpenTargetsParser(BaseParser):
 
         # Select key columns for gene identity
         # id = Ensembl gene ID, approvedSymbol = HGNC symbol
-        df = df.select([
-            "id",
-            "approvedSymbol",
-            "approvedName",
-            "proteinIds",  # Contains UniProt IDs
-        ]).collect()
+        df = df.select(
+            [
+                "id",
+                "approvedSymbol",
+                "approvedName",
+                "proteinIds",  # Contains UniProt IDs
+            ]
+        ).collect()
 
         df.write_parquet(dest)
         console.print(f"    [green]✓[/] targets: {len(df):,} rows")

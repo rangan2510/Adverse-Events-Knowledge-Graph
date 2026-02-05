@@ -275,10 +275,12 @@ class DrugCentralLoader(BaseLoader):
                 gene_node_id = gene_result[0][0]
 
                 # Create claim
-                claim_meta = json.dumps({
-                    "action_type": action_type,
-                    "source": "drugcentral",
-                })
+                claim_meta = json.dumps(
+                    {
+                        "action_type": action_type,
+                        "source": "drugcentral",
+                    }
+                )
                 self._execute(
                     """
                     INSERT INTO kg.Claim (claim_type, dataset_id, meta_json)

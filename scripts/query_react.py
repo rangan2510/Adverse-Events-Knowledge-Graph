@@ -15,10 +15,10 @@ from __future__ import annotations
 
 # Load environment before anything else
 from dotenv import load_dotenv
+
 load_dotenv(override=True)
 
 import argparse
-import sys
 
 from rich.console import Console
 from rich.panel import Panel

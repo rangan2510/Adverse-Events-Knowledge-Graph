@@ -47,19 +47,19 @@ class ClinGenLoader(BaseLoader):
             return
 
         console.print("  [dim]Preloading caches...[/]")
-        
+
         # Gene cache (symbol -> gene_key)
         result = self._execute("SELECT gene_key, symbol FROM kg.Gene")
         for row in result:
             self._gene_cache[row[1].upper()] = row[0]
         console.print(f"    Gene cache: {len(self._gene_cache):,} entries")
-        
+
         # Disease cache (mondo_id -> disease_key)
         result = self._execute("SELECT disease_key, mondo_id FROM kg.Disease WHERE mondo_id IS NOT NULL")
         for row in result:
             self._disease_cache[row[1]] = row[0]
         console.print(f"    Disease cache (MONDO): {len(self._disease_cache):,} entries")
-        
+
         self._caches_loaded = True
 
     def _execute_scalar(self, sql: str, params: tuple = ()):
@@ -70,7 +70,7 @@ class ClinGenLoader(BaseLoader):
     def load(self) -> dict[str, int]:
         """
         Load ClinGen data into graph tables.
-        
+
         Returns:
             Dict with counts of loaded entities
         """
@@ -109,27 +109,29 @@ class ClinGenLoader(BaseLoader):
             return {"clingen_claims": 0}
 
         # Pre-filter using gene cache
-        gene_lookup = pl.DataFrame({
-            "gene_upper": list(self._gene_cache.keys()),
-            "gene_key": list(self._gene_cache.values()),
-        })
+        gene_lookup = pl.DataFrame(
+            {
+                "gene_upper": list(self._gene_cache.keys()),
+                "gene_key": list(self._gene_cache.values()),
+            }
+        )
 
-        df_filtered = (
-            df
-            .with_columns(pl.col("gene_symbol").str.to_uppercase().alias("gene_upper"))
-            .join(gene_lookup, on="gene_upper", how="inner")
+        df_filtered = df.with_columns(pl.col("gene_symbol").str.to_uppercase().alias("gene_upper")).join(
+            gene_lookup, on="gene_upper", how="inner"
         )
 
         # If we have MONDO IDs, also match diseases
         if "mondo_id" in df.columns and self._disease_cache:
-            disease_lookup = pl.DataFrame({
-                "mondo_id": list(self._disease_cache.keys()),
-                "disease_key": list(self._disease_cache.values()),
-            })
+            disease_lookup = pl.DataFrame(
+                {
+                    "mondo_id": list(self._disease_cache.keys()),
+                    "disease_key": list(self._disease_cache.values()),
+                }
+            )
             df_filtered = df_filtered.join(disease_lookup, on="mondo_id", how="left")
 
         match_count = len(df_filtered)
-        console.print(f"    [dim]Matched {match_count:,} / {total:,} curations ({100*match_count/total:.1f}%)[/]")
+        console.print(f"    [dim]Matched {match_count:,} / {total:,} curations ({100 * match_count / total:.1f}%)[/]")
 
         if match_count == 0:
             console.print("  [loaded] validity: 0 claims")
@@ -172,16 +174,18 @@ class ClinGenLoader(BaseLoader):
                 for row in batch:
                     classification = row.get("classification", "Unknown")
                     score = self.VALIDITY_SCORES.get(classification, 0.5)
-                    
+
                     source_id = f"{row['gene_symbol']}_{row.get('mondo_id', 'unknown')}"
-                    stmt_json = json.dumps({
-                        "gene_symbol": row["gene_symbol"],
-                        "disease_label": row.get("disease_label"),
-                        "mondo_id": row.get("mondo_id"),
-                        "classification": classification,
-                        "inheritance": row.get("inheritance"),
-                    }).replace("'", "''")
-                    
+                    stmt_json = json.dumps(
+                        {
+                            "gene_symbol": row["gene_symbol"],
+                            "disease_label": row.get("disease_label"),
+                            "mondo_id": row.get("mondo_id"),
+                            "classification": classification,
+                            "inheritance": row.get("inheritance"),
+                        }
+                    ).replace("'", "''")
+
                     claim_values.append(
                         f"('GENE_DISEASE_CLINGEN', {score}, {dataset_id}, '{source_id}', N'{stmt_json}')"
                     )
@@ -190,7 +194,7 @@ class ClinGenLoader(BaseLoader):
                 claim_sql = f"""
                     INSERT INTO kg.Claim (claim_type, strength_score, dataset_id, source_record_id, statement_json)
                     OUTPUT INSERTED.claim_key
-                    VALUES {', '.join(claim_values)}
+                    VALUES {", ".join(claim_values)}
                 """
                 claim_results = self._execute(claim_sql)
                 claim_keys = [r[0] for r in claim_results]
@@ -223,9 +227,7 @@ class ClinGenLoader(BaseLoader):
                             if disease_node:
                                 classification = row.get("classification", "associated")
                                 relation = "causes" if classification in ("Definitive", "Strong") else "associated"
-                                claim_disease_values.append(
-                                    f"('{claim_node}', '{disease_node}', '{relation}')"
-                                )
+                                claim_disease_values.append(f"('{claim_node}', '{disease_node}', '{relation}')")
 
                     # Insert HasClaim edges
                     if has_claim_values:

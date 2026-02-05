@@ -79,10 +79,7 @@ class GtoPdbLoader(BaseLoader):
         df = pl.read_parquet(ligands_path)
 
         # Focus on approved drugs and synthetic organics
-        df = df.filter(
-            (pl.col("is_approved")) |
-            (pl.col("ligand_type") == "Synthetic organic")
-        )
+        df = df.filter((pl.col("is_approved")) | (pl.col("ligand_type") == "Synthetic organic"))
 
         console.print(f"  Processing {len(df):,} GtoPdb ligands...")
 
@@ -347,10 +344,7 @@ class GtoPdbLoader(BaseLoader):
         df = pl.read_parquet(interactions_path)
 
         # Focus on interactions with affinity data
-        df = df.filter(
-            pl.col("ligand_id").is_not_null() &
-            pl.col("target_id").is_not_null()
-        )
+        df = df.filter(pl.col("ligand_id").is_not_null() & pl.col("target_id").is_not_null())
 
         console.print(f"  Processing {len(df):,} GtoPdb interactions...")
 
@@ -475,8 +469,7 @@ class GtoPdbLoader(BaseLoader):
                 OUTPUT INSERTED.claim_key
                 VALUES ('DRUG_TARGET_GTOPDB', ?, ?, ?, ?)
                 """,
-                (strength_score, dataset_id, 
-                 f"{ligand_id}_{row.get('target_id')}", statement_json),
+                (strength_score, dataset_id, f"{ligand_id}_{row.get('target_id')}", statement_json),
             )
 
             if claim_key:
