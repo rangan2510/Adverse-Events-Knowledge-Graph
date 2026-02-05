@@ -6,7 +6,7 @@ Provides drug-target interactions with quantitative bioactivity data
 """
 
 from kg_ae.datasets.chembl.download import ChEMBLDownloader
-from kg_ae.datasets.chembl.parse import ChEMBLParser
 from kg_ae.datasets.chembl.load import ChEMBLLoader
+from kg_ae.datasets.chembl.parse import ChEMBLParser
 
 __all__ = ["ChEMBLDownloader", "ChEMBLParser", "ChEMBLLoader"]

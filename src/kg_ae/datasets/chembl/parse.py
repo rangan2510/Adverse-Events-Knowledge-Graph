@@ -63,7 +63,7 @@ class ChEMBLParser(BaseParser):
         
         records = []
         
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             for line in track(f, description="    Reading"):
                 try:
                     activity = json.loads(line.strip())
@@ -129,7 +129,7 @@ class ChEMBLParser(BaseParser):
         """Parse approved drugs JSON."""
         console.print(f"  Parsing {path.name}...")
         
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             drugs = json.load(f)
         
         records = []

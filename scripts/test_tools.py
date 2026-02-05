@@ -5,11 +5,11 @@ Usage: uv run python scripts/test_tools.py
 """
 
 from kg_ae.tools import (
-    resolve_drugs,
-    get_drug_profile,
-    expand_mechanism,
     build_subgraph,
+    expand_mechanism,
     explain_paths,
+    get_drug_profile,
+    resolve_drugs,
 )
 
 # Resolve drug names to IDs

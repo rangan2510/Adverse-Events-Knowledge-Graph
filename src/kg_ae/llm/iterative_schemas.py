@@ -8,7 +8,7 @@ sufficiency of tool outputs and requests additional information if needed.
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -24,7 +24,10 @@ class InformationGap(BaseModel):
     category: str = Field(..., description="Category of missing info (e.g., 'mechanism', 'pathway', 'interaction')")
     description: str = Field(..., description="What information is missing")
     priority: int = Field(default=1, description="Priority 1=high, 2=medium, 3=low")
-    suggested_tool: str | None = Field(default=None, description="Tool that could fill this gap (e.g., 'get_gene_pathways')")
+    suggested_tool: str | None = Field(
+        default=None,
+        description="Tool that could fill this gap (e.g., 'get_gene_pathways')"
+    )
 
 
 class SufficiencyEvaluation(BaseModel):
@@ -151,7 +154,7 @@ class IterativeContext(BaseModel):
     max_iterations: int = Field(
         default=3, 
         ge=1, 
-        le=10,
+        le=20,
         description="Maximum iterations before forcing final answer"
     )
     

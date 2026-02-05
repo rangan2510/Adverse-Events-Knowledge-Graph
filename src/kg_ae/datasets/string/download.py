@@ -9,7 +9,7 @@ from pathlib import Path
 
 import httpx
 from rich.console import Console
-from rich.progress import Progress, DownloadColumn, TransferSpeedColumn
+from rich.progress import DownloadColumn, Progress, TransferSpeedColumn
 
 from kg_ae.config import settings
 

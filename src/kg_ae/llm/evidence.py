@@ -5,9 +5,8 @@ The evidence pack is passed to the narrator LLM as the ONLY source
 of information it can use for generating summaries.
 """
 
-from dataclasses import dataclass, field
-from typing import Any
 import json
+from dataclasses import dataclass, field
 
 
 @dataclass

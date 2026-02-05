@@ -205,7 +205,7 @@ class STRINGLoader(BaseLoader):
                     has_claim_values = []
                     claim_gene_values = []
 
-                    for i, (claim_key, row) in enumerate(zip(claim_keys, batch)):
+                    for _i, (claim_key, row) in enumerate(zip(claim_keys, batch, strict=False)):
                         gene1_key = row["gene1_key"]
                         gene2_key = row["gene2_key"]
 
@@ -226,9 +226,9 @@ class STRINGLoader(BaseLoader):
 
                     # Insert ClaimGene edges
                     if claim_gene_values:
-                        self._execute(
-                            f"INSERT INTO kg.ClaimGene ($from_id, $to_id, relation) VALUES {', '.join(claim_gene_values)}"
-                        )
+                        sql = "INSERT INTO kg.ClaimGene ($from_id, $to_id, relation) VALUES "
+                        sql += ", ".join(claim_gene_values)
+                        self._execute(sql)
 
                 claims_created += len(claim_keys)
                 progress.update(task, advance=len(batch))

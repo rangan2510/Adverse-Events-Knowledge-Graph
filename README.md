@@ -111,22 +111,37 @@ ORDER BY c2.strength_score DESC
 
 ## Agentic Query Interface
 
-Natural language queries with ReAct-style iterative reasoning. The planner decomposes complex questions into tool sequences; the narrator synthesizes graph evidence into grounded responses.
+Natural language queries with ReAct-style iterative reasoning. The system supports two LLM providers:
+
+| Provider | Models | Best For |
+|----------|--------|----------|
+| **Groq Cloud** | llama-3.3-70b-versatile | Production queries, fast response |
+| **Local llama.cpp** | Phi-4-mini + Phi-4 | Offline use, no API costs |
 
 ```bash
-# Setup LLM servers (first time)
-.\scripts\setup_llm.ps1
-.\scripts\start_llm_servers.ps1
+# Configure provider in .env
+KG_AE_LLM_PROVIDER=groq   # or "local"
+
+# ReAct query (recommended) - iterative thought/action/observation loop
+uv run python scripts/query_react.py "What adverse events are shared by cyclosporine and tacrolimus?"
+
+# With iteration limit
+uv run python scripts/query_react.py --max-iterations 5 "Your query here"
+
+# Interactive mode
+uv run python scripts/query_react.py --interactive
 
 # Single-pass query (plan once, execute, narrate)
 uv run python scripts/query_kg.py "What adverse events does metformin cause?"
-
-# Multi-iteration reasoning (ReAct loop with observation-driven refinement)
-uv run python scripts/query_iterative.py "What genes does metformin target and what pathways are they involved in?"
-
-# Interactive mode
-uv run python scripts/query_iterative.py --interactive
 ```
+
+### ReAct Loop Architecture
+
+```
+Query -> [Thought] -> [Action: tool calls] -> [Execute] -> [Observation] -> Loop or Answer
+```
+
+The planner LLM reasons about information needs, emits tool calls, and evaluates sufficiency after each iteration. Tool outputs are truncated to prevent context overflow.
 
 ### Available Tools
 

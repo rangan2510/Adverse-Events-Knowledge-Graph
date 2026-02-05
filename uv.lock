@@ -743,6 +743,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "rich" },
+    { name = "ruff" },
     { name = "tenacity" },
     { name = "typer" },
 ]
@@ -776,6 +777,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.2" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=7.0.0" },
     { name = "rich", specifier = ">=14.3.1" },
+    { name = "ruff", specifier = ">=0.14.14" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.14.14" },
     { name = "tenacity", specifier = ">=9.1.2" },
     { name = "typer", specifier = ">=0.21.1" },

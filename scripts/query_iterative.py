@@ -16,18 +16,21 @@ Usage:
 
 from __future__ import annotations
 
+from dotenv import load_dotenv
+load_dotenv(override=True)
+
 import argparse
 import sys
 
 from rich.console import Console
-from rich.panel import Panel
 from rich.markdown import Markdown
+from rich.panel import Panel
 
 from kg_ae.llm import (
-    LLMConfig,
-    PlannerClient,
-    NarratorClient,
     IterativeOrchestrator,
+    LLMConfig,
+    NarratorClient,
+    PlannerClient,
 )
 
 console = Console()
@@ -257,7 +260,7 @@ def main():
         "-m",
         type=int,
         default=3,
-        help="Maximum iterations before forcing final answer (1-10, default: 3)",
+        help="Maximum iterations before forcing final answer (1-20, default: 3)",
     )
     parser.add_argument(
         "--quiet",
@@ -269,8 +272,8 @@ def main():
     args = parser.parse_args()
     
     # Validate max iterations
-    if not 1 <= args.max_iterations <= 10:
-        console.print("[red]Error: max-iterations must be between 1 and 10[/]")
+    if not 1 <= args.max_iterations <= 20:
+        console.print("[red]Error: max-iterations must be between 1 and 20[/]")
         sys.exit(1)
     
     # Run mode

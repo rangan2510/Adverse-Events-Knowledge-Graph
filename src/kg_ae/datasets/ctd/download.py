@@ -5,7 +5,6 @@ Downloads curated chemical-gene, chemical-disease, and gene-disease
 interaction data from CTD.
 """
 
-from pathlib import Path
 
 from rich.console import Console
 from rich.table import Table

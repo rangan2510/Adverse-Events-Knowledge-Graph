@@ -10,7 +10,7 @@ from pathlib import Path
 
 import httpx
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 
 from kg_ae.config import settings
 from kg_ae.datasets.base import BaseDownloader
@@ -79,40 +79,39 @@ class ChEMBLDownloader(BaseDownloader):
         
         total_fetched = 0
         
-        with open(output_path, "w", encoding="utf-8") as f:
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                TextColumn("{task.completed:,} records"),
-            ) as progress:
-                task = progress.add_task("    Fetching activities", total=max_records)
-                
-                with httpx.Client(timeout=60.0) as client:
-                    while total_fetched < max_records:
-                        params["offset"] = total_fetched
-                        
-                        try:
-                            resp = client.get(f"{BASE_URL}/activity.json", params=params)
-                            resp.raise_for_status()
-                            data = resp.json()
-                        except Exception as e:
-                            console.print(f"    [warn] API error at offset {total_fetched}: {e}")
-                            break
-                        
-                        activities = data.get("activities", [])
-                        if not activities:
-                            break
-                        
-                        for activity in activities:
-                            f.write(json.dumps(activity) + "\n")
-                        
-                        total_fetched += len(activities)
-                        progress.update(task, completed=total_fetched)
-                        
-                        # Check if we've reached the end
-                        if len(activities) < params["limit"]:
-                            break
+        with open(output_path, "w", encoding="utf-8") as f, Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("{task.completed:,} records"),
+        ) as progress:
+            task = progress.add_task("    Fetching activities", total=max_records)
+            
+            with httpx.Client(timeout=60.0) as client:
+                while total_fetched < max_records:
+                    params["offset"] = total_fetched
+                    
+                    try:
+                        resp = client.get(f"{BASE_URL}/activity.json", params=params)
+                        resp.raise_for_status()
+                        data = resp.json()
+                    except Exception as e:
+                        console.print(f"    [warn] API error at offset {total_fetched}: {e}")
+                        break
+                    
+                    activities = data.get("activities", [])
+                    if not activities:
+                        break
+                    
+                    for activity in activities:
+                        f.write(json.dumps(activity) + "\n")
+                    
+                    total_fetched += len(activities)
+                    progress.update(task, completed=total_fetched)
+                    
+                    # Check if we've reached the end
+                    if len(activities) < params["limit"]:
+                        break
         
         console.print(f"    Downloaded {total_fetched:,} activities → activities.jsonl")
         return output_path

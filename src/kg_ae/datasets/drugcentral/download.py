@@ -7,7 +7,6 @@ Downloads drug identity and target data from DrugCentral.
 from datetime import UTC, datetime
 
 from rich.console import Console
-from rich.table import Table
 
 from kg_ae.datasets.base import BaseDownloader, DatasetMetadata
 

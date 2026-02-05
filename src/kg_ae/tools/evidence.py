@@ -4,8 +4,8 @@ Evidence retrieval tools.
 Get provenance and supporting evidence for claims.
 """
 
-from dataclasses import dataclass
 import json
+from dataclasses import dataclass
 
 from kg_ae.db import execute
 

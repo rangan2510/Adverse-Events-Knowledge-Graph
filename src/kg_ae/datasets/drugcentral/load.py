@@ -8,7 +8,7 @@ import json
 
 import polars as pl
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, MofNCompleteColumn
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
 from kg_ae.datasets.base import BaseLoader

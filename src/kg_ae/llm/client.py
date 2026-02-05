@@ -11,14 +11,15 @@ import instructor
 from openai import OpenAI
 
 from .config import LLMConfig
-from .prompts import format_planner_messages, format_narrator_messages
+from .prompts import format_narrator_messages, format_planner_messages
 from .schemas import ToolPlan
 
 
 class PlannerClient:
     """
-    Client for the planner LLM (Phi-4-mini).
+    Client for the planner LLM.
 
+    Supports local (Phi-4-mini via llama.cpp) or Groq Cloud (gpt-oss-20b).
     Uses Instructor to enforce ToolPlan JSON schema.
     Returns structured ToolPlan objects guaranteed to match schema.
     """
@@ -26,14 +27,17 @@ class PlannerClient:
     def __init__(self, config: LLMConfig | None = None):
         self.config = config or LLMConfig()
         self._raw_client = OpenAI(
-            base_url=self.config.planner_url,
-            api_key="not-needed",  # local llama-server doesn't check
+            base_url=self.config.get_planner_url(),
+            api_key=self.config.get_api_key(),
         )
-        # Wrap with instructor for structured output (JSON_SCHEMA for llama.cpp)
-        self._client = instructor.from_openai(
-            self._raw_client, 
-            mode=instructor.Mode.JSON_SCHEMA,
+        # Wrap with instructor for structured output
+        # JSON mode for Groq, JSON_SCHEMA for local llama.cpp
+        mode = (
+            instructor.Mode.JSON
+            if self.config.provider == "groq"
+            else instructor.Mode.JSON_SCHEMA
         )
+        self._client = instructor.from_openai(self._raw_client, mode=mode)
 
     def plan(self, query: str) -> ToolPlan:
         """
@@ -48,11 +52,11 @@ class PlannerClient:
         messages = format_planner_messages(query)
 
         plan = self._client.chat.completions.create(
-            model=self.config.planner_model,
+            model=self.config.get_planner_model(),
             messages=messages,
             response_model=ToolPlan,
-            temperature=self.config.planner_temperature,
-            max_tokens=self.config.planner_max_tokens,
+            temperature=self.config.get_planner_temperature(),
+            max_tokens=self.config.get_planner_max_tokens(),
             max_retries=2,
         )
         return plan
@@ -72,19 +76,25 @@ class PlannerClient:
         # Add resolved context as assistant turn + user follow-up
         messages.append({
             "role": "assistant",
-            "content": '{"calls": [{"tool": "resolve_drugs", "args": {"names": [...]}, "reason": "resolve entities"}], "stop_conditions": {}}'
+            "content": (
+                '{"calls": [{"tool": "resolve_drugs", "args": {"names": [...]}, '
+                '"reason": "resolve entities"}], "stop_conditions": {}}'
+            )
         })
         messages.append({
             "role": "user",
-            "content": f"Resolution results:\n{resolved_context}\n\nNow plan the remaining tool calls using the resolved keys."
+            "content": (
+                f"Resolution results:\n{resolved_context}\n\n"
+                "Now plan the remaining tool calls using the resolved keys."
+            )
         })
 
         plan = self._client.chat.completions.create(
-            model=self.config.planner_model,
+            model=self.config.get_planner_model(),
             messages=messages,
             response_model=ToolPlan,
-            temperature=self.config.planner_temperature,
-            max_tokens=self.config.planner_max_tokens,
+            temperature=self.config.get_planner_temperature(),
+            max_tokens=self.config.get_planner_max_tokens(),
             max_retries=2,
         )
         return plan
@@ -101,11 +111,11 @@ class PlannerClient:
             Instance of response_model
         """
         result = self._client.chat.completions.create(
-            model=self.config.planner_model,
+            model=self.config.get_planner_model(),
             messages=messages,
             response_model=response_model,
-            temperature=self.config.planner_temperature,
-            max_tokens=self.config.planner_max_tokens,
+            temperature=self.config.get_planner_temperature(),
+            max_tokens=self.config.get_planner_max_tokens(),
             max_retries=2,
         )
         return result
@@ -113,22 +123,26 @@ class PlannerClient:
 
 class NarratorClient:
     """
-    Client for the narrator LLM (Phi-4).
+    Client for the narrator LLM.
 
-    Supports both free-form text and structured output (for sufficiency evaluation).
+    Supports local (Phi-4 via llama.cpp) or Groq Cloud (gpt-oss-20b).
+    Provides both free-form text and structured output (for sufficiency evaluation).
     """
 
     def __init__(self, config: LLMConfig | None = None):
         self.config = config or LLMConfig()
         self._raw_client = OpenAI(
-            base_url=self.config.narrator_url,
-            api_key="not-needed",
+            base_url=self.config.get_narrator_url(),
+            api_key=self.config.get_api_key(),
         )
         # Wrap with instructor for structured output when needed
-        self._instructor_client = instructor.from_openai(
-            self._raw_client,
-            mode=instructor.Mode.JSON_SCHEMA,
+        # JSON mode for Groq, JSON_SCHEMA for local llama.cpp
+        mode = (
+            instructor.Mode.JSON
+            if self.config.provider == "groq"
+            else instructor.Mode.JSON_SCHEMA
         )
+        self._instructor_client = instructor.from_openai(self._raw_client, mode=mode)
         # Keep raw client for text generation
         self._client = self._raw_client
 
@@ -143,10 +157,10 @@ class NarratorClient:
             Generated text
         """
         response = self._client.chat.completions.create(
-            model=self.config.narrator_model,
+            model=self.config.get_narrator_model(),
             messages=messages,
-            temperature=self.config.narrator_temperature,
-            max_tokens=self.config.narrator_max_tokens,
+            temperature=self.config.get_narrator_temperature(),
+            max_tokens=self.config.get_narrator_max_tokens(),
         )
         return response.choices[0].message.content or ""
 
@@ -162,11 +176,11 @@ class NarratorClient:
             Instance of response_model
         """
         result = self._instructor_client.chat.completions.create(
-            model=self.config.narrator_model,
+            model=self.config.get_narrator_model(),
             messages=messages,
             response_model=response_model,
-            temperature=self.config.narrator_temperature,
-            max_tokens=self.config.narrator_max_tokens,
+            temperature=self.config.get_narrator_temperature(),
+            max_tokens=self.config.get_narrator_max_tokens(),
             max_retries=2,
         )
         return result
@@ -199,10 +213,10 @@ class NarratorClient:
         messages = format_narrator_messages(query, evidence_context)
 
         stream = self._client.chat.completions.create(
-            model=self.config.narrator_model,
+            model=self.config.get_narrator_model(),
             messages=messages,
-            temperature=self.config.narrator_temperature,
-            max_tokens=self.config.narrator_max_tokens,
+            temperature=self.config.get_narrator_temperature(),
+            max_tokens=self.config.get_narrator_max_tokens(),
             stream=True,
         )
         for chunk in stream:

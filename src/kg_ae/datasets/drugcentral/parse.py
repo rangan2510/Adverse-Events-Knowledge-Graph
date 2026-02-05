@@ -8,7 +8,6 @@ from pathlib import Path
 
 import polars as pl
 from rich.console import Console
-from rich.table import Table
 
 from kg_ae.datasets.base import BaseParser
 
@@ -29,7 +28,6 @@ class DrugCentralParser(BaseParser):
         """
         console.print("[bold cyan]DrugCentral Parser[/]")
         results = {}
-        stats = []
 
         # Parse drug structures (ID mapping)
         structures_path = self._parse_structures()

@@ -12,8 +12,8 @@ from rich.console import Console
 from rich.progress import track
 
 from kg_ae.config import settings
-from kg_ae.db import get_connection
 from kg_ae.datasets.base import BaseLoader
+from kg_ae.db import get_connection
 
 console = Console()
 
@@ -156,7 +156,7 @@ class HPOLoader(BaseLoader):
             # Build HasClaim edges (Drug -> Claim) - but HPO is Gene -> Phenotype
             # We link Gene -> Claim via HasClaim
             edge_params = []
-            for idx, (claim_key, claim_node_id) in enumerate(inserted):
+            for idx, (_claim_key, claim_node_id) in enumerate(inserted):
                 gene_symbol = batch[idx]["gene_symbol"]
                 gene_node_id = gene_nodes.get(gene_symbol)
                 if gene_node_id:

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import httpx
 from rich.console import Console
-from rich.progress import Progress, DownloadColumn, TransferSpeedColumn
+from rich.progress import DownloadColumn, Progress, TransferSpeedColumn
 
 from kg_ae.config import settings
 from kg_ae.datasets.base import BaseDownloader
@@ -57,8 +57,10 @@ class HPODownloader(BaseDownloader):
             console.print(f"  Downloading {filename}...")
             
             try:
-                with httpx.Client(timeout=120.0, follow_redirects=True) as client:
-                    with client.stream("GET", url) as response:
+                with (
+                    httpx.Client(timeout=120.0, follow_redirects=True) as client,
+                    client.stream("GET", url) as response,
+                ):
                         if response.status_code != 200:
                             console.print(f"    [warn] HTTP {response.status_code}")
                             continue

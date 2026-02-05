@@ -15,6 +15,9 @@ Options:
 
 from __future__ import annotations
 
+from dotenv import load_dotenv
+load_dotenv(override=True)
+
 import argparse
 import json
 import sys
@@ -22,41 +25,36 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from rich.console import Console
+from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.table import Table
-from rich.syntax import Syntax
-from rich.markdown import Markdown
 
-console = Console()
-
-
-# Tool imports
+from kg_ae.llm import LLMConfig, NarratorClient, PlannerClient
+from kg_ae.llm.schemas import ToolPlan
 from kg_ae.tools import (
+    build_subgraph,
+    expand_gene_context,
+    expand_mechanism,
+    explain_paths,
+    find_drug_to_ae_paths,
+    get_claim_evidence,
+    get_disease_genes,
+    get_drug_adverse_events,
+    get_drug_faers_signals,
+    get_drug_label_sections,
+    get_drug_profile,
+    get_drug_targets,
+    get_entity_claims,
+    get_gene_diseases,
+    get_gene_interactors,
+    get_gene_pathways,
+    resolve_adverse_events,
+    resolve_diseases,
     resolve_drugs,
     resolve_genes,
-    resolve_diseases,
-    resolve_adverse_events,
-    get_drug_targets,
-    get_gene_pathways,
-    get_gene_diseases,
-    get_disease_genes,
-    get_gene_interactors,
-    expand_mechanism,
-    expand_gene_context,
-    get_drug_adverse_events,
-    get_drug_profile,
-    get_drug_label_sections,
-    get_drug_faers_signals,
-    get_claim_evidence,
-    get_entity_claims,
-    find_drug_to_ae_paths,
-    explain_paths,
-    build_subgraph,
 )
 
-from kg_ae.llm import LLMConfig, PlannerClient, NarratorClient
-from kg_ae.llm.schemas import ToolPlan, ToolCall
-
+console = Console()
 
 # Tool registry - maps names to functions
 TOOLS = {
@@ -169,14 +167,14 @@ class ToolResult:
                     sampled = []
                     items_per_group = max(1, max_items // len(groups))
                     
-                    for group_val, group_items in groups.items():
+                    for _group_val, group_items in groups.items():
                         sampled.extend(group_items[:items_per_group])
                     
                     # If we have room for more, add extras
                     remaining = max_items - len(sampled)
                     if remaining > 0:
                         all_remaining = []
-                        for group_val, group_items in groups.items():
+                        for _group_val, group_items in groups.items():
                             all_remaining.extend(group_items[items_per_group:])
                         sampled.extend(all_remaining[:remaining])
                     
@@ -204,26 +202,77 @@ class ExecutionContext:
     ae_keys: dict[str, int] = field(default_factory=dict)
     
     def substitute_args(self, args: dict) -> dict:
-        """Substitute placeholder keys with resolved values."""
+        """Substitute placeholder keys with resolved values.
+        
+        The planner often uses indices (0, 1, 2, 3) as placeholders for drugs
+        that will be resolved. This maps those indices to actual resolved keys.
+        
+        Examples:
+            drug_key=0 -> first resolved drug key
+            drug_key=1 -> second resolved drug key
+            drug_key="metformin" -> look up by name
+        """
         result = {}
         for key, value in args.items():
             if key == "drug_key" and isinstance(value, (int, str)):
-                # If it's 0 or a placeholder, use first resolved drug
-                if value == 0 or (isinstance(value, str) and value.lower() in self.drug_keys):
-                    if self.drug_keys:
-                        result[key] = list(self.drug_keys.values())[0]
+                # Handle integer placeholders (0, 1, 2, 3...) - map to resolved keys by index
+                if isinstance(value, int) and value < 100:  # Small int = likely placeholder
+                    resolved_keys = list(self.drug_keys.values())
+                    if value < len(resolved_keys):
+                        result[key] = resolved_keys[value]
+                    elif resolved_keys:
+                        # Fallback to first resolved key if index out of range
+                        result[key] = resolved_keys[0]
                     else:
                         result[key] = value
+                # Handle string name lookup
+                elif isinstance(value, str) and value.lower() in self.drug_keys:
+                    result[key] = self.drug_keys[value.lower()]
                 else:
                     result[key] = value
+                    
             elif key == "gene_key" and isinstance(value, (int, str)):
-                if value == 0 or (isinstance(value, str) and value.upper() in self.gene_keys):
-                    if self.gene_keys:
-                        result[key] = list(self.gene_keys.values())[0]
+                if isinstance(value, int) and value < 100:
+                    resolved_keys = list(self.gene_keys.values())
+                    if value < len(resolved_keys):
+                        result[key] = resolved_keys[value]
+                    elif resolved_keys:
+                        result[key] = resolved_keys[0]
                     else:
                         result[key] = value
+                elif isinstance(value, str) and value.upper() in self.gene_keys:
+                    result[key] = self.gene_keys[value.upper()]
                 else:
                     result[key] = value
+                    
+            elif key == "disease_key" and isinstance(value, (int, str)):
+                if isinstance(value, int) and value < 100:
+                    resolved_keys = list(self.disease_keys.values())
+                    if value < len(resolved_keys):
+                        result[key] = resolved_keys[value]
+                    elif resolved_keys:
+                        result[key] = resolved_keys[0]
+                    else:
+                        result[key] = value
+                elif isinstance(value, str) and value.lower() in self.disease_keys:
+                    result[key] = self.disease_keys[value.lower()]
+                else:
+                    result[key] = value
+                    
+            elif key == "ae_key" and isinstance(value, (int, str)):
+                if isinstance(value, int) and value < 100:
+                    resolved_keys = list(self.ae_keys.values())
+                    if value < len(resolved_keys):
+                        result[key] = resolved_keys[value]
+                    elif resolved_keys:
+                        result[key] = resolved_keys[0]
+                    else:
+                        result[key] = value
+                elif isinstance(value, str) and value.lower() in self.ae_keys:
+                    result[key] = self.ae_keys[value.lower()]
+                else:
+                    result[key] = value
+                    
             elif key == "drug_keys" and isinstance(value, list):
                 result[key] = list(self.drug_keys.values()) or value
             elif key == "gene_keys" and isinstance(value, list):
@@ -375,7 +424,7 @@ def execute_plan(plan: ToolPlan, verbose: bool = True) -> list[ToolResult]:
                 elif isinstance(result.result, dict):
                     console.print(f"  [green]OK[/green] - {len(result.result)} items")
                 else:
-                    console.print(f"  [green]OK[/green]")
+                    console.print("  [green]OK[/green]")
             else:
                 console.print(f"  [red]ERROR[/red]: {result.error}")
     

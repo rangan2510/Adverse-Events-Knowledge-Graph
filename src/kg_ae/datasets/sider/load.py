@@ -10,13 +10,13 @@ import polars as pl
 from rich.console import Console
 from rich.table import Table
 
-from kg_ae.config import settings
-from kg_ae.db import execute, get_connection
+from kg_ae.datasets.base import BaseLoader
+from kg_ae.db import get_connection
 
 console = Console()
 
 
-class SiderLoader:
+class SiderLoader(BaseLoader):
     """Load SIDER data into SQL Server knowledge graph."""
 
     source_key = "sider"
@@ -25,7 +25,7 @@ class SiderLoader:
     license_name = "CC BY-NC-SA 4.0"
 
     def __init__(self):
-        self.silver_dir = settings.silver_dir / self.source_key
+        super().__init__()
 
     def load(self) -> dict[str, int]:
         """
@@ -48,7 +48,13 @@ class SiderLoader:
         counts = {}
 
         # 1. Register dataset
-        dataset_id = self._register_dataset()
+        dataset_id = self.ensure_dataset(
+            dataset_key=self.source_key,
+            dataset_name=self.dataset_name,
+            dataset_version=self.dataset_version,
+            license_name=self.license_name,
+            source_url="http://sideeffects.embl.de/",
+        )
         console.print(f"  [dim]Registered dataset_id={dataset_id}[/]")
 
         # 2. Load drugs
@@ -72,36 +78,6 @@ class SiderLoader:
         console.print(table)
 
         return counts
-
-    def _register_dataset(self) -> int:
-        """Register SIDER dataset in kg.Dataset table."""
-        # Check if already registered
-        rows = execute(
-            "SELECT dataset_id FROM kg.Dataset WHERE dataset_key = ? AND version_key = ?",
-            (self.source_key, self.dataset_version),
-        )
-        if rows:
-            return rows[0][0]
-
-        # Insert new dataset record
-        with get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                INSERT INTO kg.Dataset 
-                    (dataset_key, dataset_name, dataset_version, license_name, source_url)
-                OUTPUT INSERTED.dataset_id
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                self.source_key,
-                self.dataset_name,
-                self.dataset_version,
-                self.license_name,
-                "http://sideeffects.embl.de/",
-            )
-            result = cursor.fetchone()
-            conn.commit()
-            return result[0]
 
     def _load_drugs(self) -> int:
         """Load drug entities into kg.Drug table."""

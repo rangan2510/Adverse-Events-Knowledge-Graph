@@ -2,7 +2,126 @@
 
 ## Overview
 
-The iterative reasoning system enables multi-step query refinement where the narrator LLM evaluates whether current information is sufficient and can request additional tool calls if needed.
+The system provides two iterative reasoning implementations:
+
+| Implementation | Script | LLM Architecture | Context Strategy |
+|---------------|--------|------------------|------------------|
+| **ReAct** (recommended) | `query_react.py` | Single LLM | Rolling trace summary |
+| **Two-Phase** | `query_iterative.py` | Planner + Narrator | Full trace accumulation |
+
+---
+
+## ReAct Orchestrator (Recommended)
+
+The ReAct (Reasoning + Acting) orchestrator uses a single LLM for all reasoning steps with efficient context management.
+
+### Architecture
+
+```
+Query
+  |
+  v
+[THOUGHT] -----> LLM reasons about information needs
+  |
+  v
+[ACTION] ------> LLM emits tool calls with reasons
+  |
+  v
+[EXECUTE] -----> Tools run, outputs TRUNCATED (max 30 items)
+  |
+  v
+[OBSERVATION] -> LLM evaluates sufficiency (low/medium/high)
+  |
+  +--- Insufficient --> Loop with ROLLING SUMMARY (not full trace)
+  |
+  +--- Sufficient ----> FINAL RESPONSE
+```
+
+### Key Design Decisions
+
+1. **Single LLM**: Both planning and observation use the same model (e.g., llama-3.3-70b-versatile)
+2. **Rolling Trace Summary**: Only keeps a compact summary of previous iterations, not full tool outputs
+3. **Output Truncation**: Tool results capped at 30 items to prevent context overflow
+4. **Priority Field Formatting**: Shows `ae_label` before `ae_key` for better LLM comprehension
+
+### Usage
+
+```bash
+# Basic query
+uv run python scripts/query_react.py "What adverse events are shared by cyclosporine and tacrolimus?"
+
+# With iteration limit
+uv run python scripts/query_react.py --max-iterations 5 "Your query here"
+
+# Interactive mode
+uv run python scripts/query_react.py --interactive
+```
+
+### Pydantic Schemas
+
+```python
+from kg_ae.llm import ReActStep, ReActContext, FinalResponse, Confidence
+
+# Each iteration produces a ReActStep
+class ReActStep(BaseModel):
+    thought: str           # Reasoning about current state
+    tool_calls: list[ToolCallRequest]  # Tools to execute
+    observation: str       # What was learned
+    confidence: Confidence # low | medium | high
+    missing_info: list[str]
+    trace_summary: str     # Compact summary for next iteration
+    is_complete: bool
+
+# Context maintained across iterations
+class ReActContext(BaseModel):
+    original_query: str
+    trace_summary: str     # Rolling summary (not full trace)
+    iteration: int
+    max_iterations: int
+    resolved_drugs: dict[str, int]   # Persisted across iterations
+    resolved_genes: dict[str, int]
+    last_tool_results: list[ToolResult]
+
+# Final response structure
+class FinalResponse(BaseModel):
+    summary: str
+    findings: list[str]
+    evidence_summary: str
+    limitations: list[str]
+    confidence: Confidence
+```
+
+### Python API
+
+```python
+from kg_ae.llm import LLMConfig, ReActOrchestrator
+
+config = LLMConfig()  # Reads from .env
+orchestrator = ReActOrchestrator(config, max_iterations=10, verbose=True)
+
+context, final_response = orchestrator.query(
+    "What adverse events are shared by cyclosporine and tacrolimus?"
+)
+
+print(final_response)  # Markdown-formatted response
+print(context.iteration)  # Number of iterations used
+```
+
+### Module Structure
+
+```
+src/kg_ae/llm/
+  react_schemas.py      # ReActStep, ReActContext, FinalResponse, Confidence
+  react_prompts.py      # System prompts, tool catalog, message formatting
+  react_executor.py     # Tool execution with truncation
+  react_orchestrator.py # Main ReAct loop
+```
+
+---
+
+## Two-Phase Orchestrator (Legacy)
+
+The two-phase system uses separate Planner and Narrator LLMs with full trace accumulation.
 
 ## Architecture
 

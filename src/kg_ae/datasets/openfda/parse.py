@@ -67,7 +67,7 @@ class OpenFDAParser(BaseParser):
 
         zip_files = list(label_dir.glob("*.zip"))
         if not zip_files:
-            console.print(f"  [dim][skip] No label zip files found[/]")
+            console.print("  [dim][skip] No label zip files found[/]")
             return None
 
         dest = self.bronze_dir / "labels.parquet"
@@ -179,13 +179,13 @@ class OpenFDAParser(BaseParser):
 
         zip_files = list(ndc_dir.glob("*.zip"))
         if not zip_files:
-            console.print(f"  [dim][skip] No NDC zip files found[/]")
+            console.print("  [dim][skip] No NDC zip files found[/]")
             return None
 
         dest = self.bronze_dir / "ndc.parquet"
         records = []
 
-        console.print(f"  Processing NDC data...")
+        console.print("  Processing NDC data...")
 
         for zip_path in zip_files:
             try:

@@ -1,10 +1,16 @@
 """Test tools with biologically significant data."""
 
 from kg_ae.tools import (
-    resolve_drugs, resolve_genes, resolve_diseases, resolve_adverse_events,
-    get_drug_targets, get_gene_diseases, get_disease_genes,
-    get_drug_adverse_events, get_drug_faers_signals,
-    get_gene_interactors, get_gene_pathways
+    get_disease_genes,
+    get_drug_adverse_events,
+    get_drug_targets,
+    get_gene_diseases,
+    get_gene_interactors,
+    get_gene_pathways,
+    resolve_adverse_events,
+    resolve_diseases,
+    resolve_drugs,
+    resolve_genes,
 )
 
 

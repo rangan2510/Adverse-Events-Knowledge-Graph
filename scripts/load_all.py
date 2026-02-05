@@ -9,24 +9,27 @@ ETL pipeline for all datasets. Order matters:
 6. OpenTargets - Gene-disease associations (enriches Disease nodes)
 """
 
-from kg_ae.datasets.sider import (
-    SIDERDownloader, SIDERParser, SIDERNormalizer, SIDERLoader
-)
 from kg_ae.datasets.drugcentral import (
-    DrugCentralDownloader, DrugCentralParser, DrugCentralNormalizer, DrugCentralLoader
+    DrugCentralDownloader,
+    DrugCentralLoader,
+    DrugCentralNormalizer,
+    DrugCentralParser,
 )
-from kg_ae.datasets.hgnc import (
-    HGNCDownloader, HGNCParser, HGNCLoader
-)
-from kg_ae.datasets.gtop import (
-    GtoPdbDownloader, GtoPdbParser, GtoPdbLoader
+from kg_ae.datasets.gtop import GtoPdbDownloader, GtoPdbLoader, GtoPdbParser
+from kg_ae.datasets.hgnc import HGNCDownloader, HGNCLoader, HGNCParser
+from kg_ae.datasets.opentargets import (
+    OpenTargetsDownloader,
+    OpenTargetsLoader,
+    OpenTargetsNormalizer,
+    OpenTargetsParser,
 )
 from kg_ae.datasets.reactome import (
-    ReactomeDownloader, ReactomeParser, ReactomeNormalizer, ReactomeLoader
+    ReactomeDownloader,
+    ReactomeLoader,
+    ReactomeNormalizer,
+    ReactomeParser,
 )
-from kg_ae.datasets.opentargets import (
-    OpenTargetsDownloader, OpenTargetsParser, OpenTargetsNormalizer, OpenTargetsLoader
-)
+from kg_ae.datasets.sider import SIDERDownloader, SIDERLoader, SIDERNormalizer, SIDERParser
 
 # Sources with full ETL pipeline (download → parse → normalize → load)
 SOURCES_FULL = [

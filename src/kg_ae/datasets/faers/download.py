@@ -4,12 +4,11 @@ FAERS downloader.
 Downloads FDA Adverse Event Reporting System data from openFDA bulk downloads.
 """
 
-import zipfile
 from pathlib import Path
 
 import httpx
 from rich.console import Console
-from rich.progress import Progress, DownloadColumn, TransferSpeedColumn, BarColumn
+from rich.progress import BarColumn, DownloadColumn, Progress, TransferSpeedColumn
 
 from kg_ae.config import settings
 from kg_ae.datasets.base import BaseDownloader
@@ -96,19 +95,18 @@ class FAERSDownloader(BaseDownloader):
 
     def _download_file(self, url: str, output_path: Path) -> None:
         """Download a file with progress."""
-        with httpx.Client(timeout=120.0, follow_redirects=True) as client:
-            with client.stream("GET", url) as resp:
-                resp.raise_for_status()
-                total = int(resp.headers.get("content-length", 0))
+        with httpx.Client(timeout=120.0, follow_redirects=True) as client, client.stream("GET", url) as resp:
+            resp.raise_for_status()
+            total = int(resp.headers.get("content-length", 0))
+            
+            with Progress(
+                BarColumn(),
+                DownloadColumn(),
+                TransferSpeedColumn(),
+            ) as progress:
+                task = progress.add_task("    ", total=total)
                 
-                with Progress(
-                    BarColumn(),
-                    DownloadColumn(),
-                    TransferSpeedColumn(),
-                ) as progress:
-                    task = progress.add_task("    ", total=total)
-                    
-                    with open(output_path, "wb") as f:
-                        for chunk in resp.iter_bytes(chunk_size=8192):
-                            f.write(chunk)
-                            progress.update(task, advance=len(chunk))
+                with open(output_path, "wb") as f:
+                    for chunk in resp.iter_bytes(chunk_size=8192):
+                        f.write(chunk)
+                        progress.update(task, advance=len(chunk))

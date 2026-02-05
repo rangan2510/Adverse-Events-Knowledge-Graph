@@ -149,7 +149,6 @@ class ClinGenLoader(BaseLoader):
                 disease_node_ids[row[0]] = row[1]
 
         claims_created = 0
-        diseases_created = 0
         batch_size = 500
 
         with Progress() as progress:
@@ -209,7 +208,7 @@ class ClinGenLoader(BaseLoader):
                     has_claim_values = []
                     claim_disease_values = []
 
-                    for claim_key, row in zip(claim_keys, batch):
+                    for claim_key, row in zip(claim_keys, batch, strict=False):
                         gene_key = row["gene_key"]
                         gene_node = gene_node_ids.get(gene_key)
                         claim_node = claim_node_ids.get(claim_key)
@@ -236,9 +235,9 @@ class ClinGenLoader(BaseLoader):
 
                     # Insert ClaimDisease edges
                     if claim_disease_values:
-                        self._execute(
-                            f"INSERT INTO kg.ClaimDisease ($from_id, $to_id, relation) VALUES {', '.join(claim_disease_values)}"
-                        )
+                        sql = "INSERT INTO kg.ClaimDisease ($from_id, $to_id, relation) VALUES "
+                        sql += ", ".join(claim_disease_values)
+                        self._execute(sql)
 
                 claims_created += len(claim_keys)
                 progress.update(task, advance=len(batch))

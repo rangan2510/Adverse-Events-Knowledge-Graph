@@ -74,3 +74,4 @@ class SiderDownloader(BaseDownloader):
             table.add_row(r.local_path.name, "[green]✓[/]")
         console.print(table)
 
+        return results

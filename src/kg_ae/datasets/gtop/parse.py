@@ -159,7 +159,7 @@ class GtoPdbParser(BaseParser):
                 selected_cols.append(pl.col(orig_col).alias(new_col))
 
         if not selected_cols:
-            console.print(f"  [yellow][warn][/] No expected columns found in targets file")
+            console.print("  [yellow][warn][/] No expected columns found in targets file")
             console.print(f"  Available columns: {cols[:10]}...")
             return None
 

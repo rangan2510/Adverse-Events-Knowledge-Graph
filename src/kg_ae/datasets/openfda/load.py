@@ -6,6 +6,7 @@ Loads parsed FDA labeling data into SQL Server graph tables:
 - Creates DRUG_LABEL claims linking drugs to their safety sections
 """
 
+import contextlib
 import json
 from pathlib import Path
 from typing import Any
@@ -192,10 +193,8 @@ class OpenFDALoader(BaseLoader):
         # Build synonyms from brand names
         synonyms = []
         if row.get("brand_names_json"):
-            try:
+            with contextlib.suppress(json.JSONDecodeError):
                 synonyms.extend(json.loads(row["brand_names_json"]))
-            except json.JSONDecodeError:
-                pass
         if row.get("generic_names_json"):
             try:
                 for gn in json.loads(row["generic_names_json"]):
@@ -207,15 +206,11 @@ class OpenFDALoader(BaseLoader):
         # Build xrefs
         xrefs = {}
         if row.get("rxcui_json"):
-            try:
+            with contextlib.suppress(json.JSONDecodeError):
                 xrefs["rxcui"] = json.loads(row["rxcui_json"])
-            except json.JSONDecodeError:
-                pass
         if row.get("unii_json"):
-            try:
+            with contextlib.suppress(json.JSONDecodeError):
                 xrefs["unii"] = json.loads(row["unii_json"])
-            except json.JSONDecodeError:
-                pass
         if row.get("spl_id"):
             xrefs["spl_id"] = row["spl_id"]
 
@@ -380,10 +375,8 @@ class OpenFDALoader(BaseLoader):
                 # Parse existing xrefs
                 xrefs = {}
                 if existing_xrefs:
-                    try:
+                    with contextlib.suppress(json.JSONDecodeError):
                         xrefs = json.loads(existing_xrefs)
-                    except json.JSONDecodeError:
-                        pass
 
                 # Add NDC
                 if "ndc" not in xrefs:

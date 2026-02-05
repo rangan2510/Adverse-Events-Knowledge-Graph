@@ -12,8 +12,8 @@ from rich.console import Console
 from rich.progress import track
 
 from kg_ae.config import settings
-from kg_ae.db import get_connection
 from kg_ae.datasets.base import BaseLoader
+from kg_ae.db import get_connection
 
 console = Console()
 
@@ -132,10 +132,7 @@ class FAERSLoader(BaseLoader):
             # Normalize signal score: use log(PRR) scaled to 0-1
             # PRR=1 -> 0, PRR=10 -> 0.5, PRR=100 -> 1.0
             import math
-            if prr > 1:
-                strength_score = min(1.0, math.log10(prr) / 2)
-            else:
-                strength_score = 0.0
+            strength_score = min(1.0, math.log10(prr) / 2) if prr > 1 else 0.0
             
             rows.append({
                 "drug_node_id": drug_node_id,
@@ -188,7 +185,7 @@ class FAERSLoader(BaseLoader):
             # Build HasClaim edges (Drug -> Claim)
             if inserted:
                 edge_values = []
-                for idx, (claim_key, claim_node_id) in enumerate(inserted):
+                for idx, (_claim_key, claim_node_id) in enumerate(inserted):
                     drug_node_id = batch[idx]["drug_node_id"]
                     edge_values.append(f"('{drug_node_id}', '{claim_node_id}', 'subject')")
                 
@@ -202,7 +199,7 @@ class FAERSLoader(BaseLoader):
             # Build ClaimAdverseEvent edges (Claim -> AE)
             if inserted:
                 ae_edge_values = []
-                for idx, (claim_key, claim_node_id) in enumerate(inserted):
+                for idx, (_claim_key, claim_node_id) in enumerate(inserted):
                     ae_node_id = batch[idx]["ae_node_id"]
                     prr = batch[idx]["prr"]
                     ae_edge_values.append(f"('{claim_node_id}', '{ae_node_id}', 'faers_signal', {prr})")

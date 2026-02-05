@@ -5,7 +5,6 @@ Downloads gene-disease association data from Open Targets Platform.
 https://platform.opentargets.org/downloads/data
 """
 
-import os
 from datetime import datetime
 from pathlib import Path
 
@@ -53,7 +52,7 @@ class OpenTargetsDownloader(BaseDownloader):
         console.print("[bold cyan]Open Targets Downloader[/]")
         results = []
 
-        for dataset_name, info in self.DATASETS.items():
+        for dataset_name, _info in self.DATASETS.items():
             dataset_dir = self.raw_dir / dataset_name
 
             if dataset_dir.exists() and not force:

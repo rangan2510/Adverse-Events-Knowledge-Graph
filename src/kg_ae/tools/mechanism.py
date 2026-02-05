@@ -4,7 +4,7 @@ Mechanism expansion tools.
 Expand drugs to targets (genes) and genes to pathways.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from kg_ae.db import execute
 

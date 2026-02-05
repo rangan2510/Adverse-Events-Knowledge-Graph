@@ -12,26 +12,25 @@ Implements the loop:
 from __future__ import annotations
 
 import time
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
 
-from .client import PlannerClient, NarratorClient
-from .schemas import ToolPlan
+from .client import NarratorClient, PlannerClient
 from .iterative_schemas import (
-    SufficiencyEvaluation,
-    ToolExecutionRecord,
     IterationRecord,
     IterativeContext,
+    SufficiencyEvaluation,
     SufficiencyStatus,
+    ToolExecutionRecord,
 )
 from .prompts import (
+    format_narrator_messages,
     format_planner_messages,
     format_sufficiency_evaluation_messages,
-    format_narrator_messages,
 )
+from .schemas import ToolPlan
 
 console = Console()
 
@@ -116,7 +115,11 @@ class IterativeOrchestrator:
             # Check if planner decided to stop
             if plan.stop_conditions.no_relevant_tools or plan.stop_conditions.sufficient_information:
                 if self.verbose:
-                    reason = "sufficient information" if plan.stop_conditions.sufficient_information else "no relevant tools"
+                    reason = (
+                        "sufficient information"
+                        if plan.stop_conditions.sufficient_information
+                        else "no relevant tools"
+                    )
                     console.print(f"\n[green]Planner stopped: {reason}[/]")
                 
                 # Create iteration record with no tool executions
@@ -179,7 +182,7 @@ class IterativeOrchestrator:
             # Decide: continue or finish
             if observation.status == SufficiencyStatus.SUFFICIENT or observation.can_answer_with_current_data:
                 if self.verbose:
-                    console.print(f"\n[green]Observation: sufficient. Generating final response...[/]")
+                    console.print("\n[green]Observation: sufficient. Generating final response...[/]")
                 
                 final_response = self._generate_final_response(context, cumulative_context)
                 context.final_response = final_response
@@ -188,7 +191,7 @@ class IterativeOrchestrator:
             
             elif context.current_iteration >= context.max_iterations:
                 if self.verbose:
-                    console.print(f"\n[yellow]Max iterations reached. Generating best-effort response...[/]")
+                    console.print("\n[yellow]Max iterations reached. Generating best-effort response...[/]")
                 
                 final_response = self._generate_final_response(context, cumulative_context)
                 context.final_response = final_response
@@ -241,7 +244,7 @@ class IterativeOrchestrator:
         
         for result in tool_results:
             key = (result.tool, str(result.args))
-            reason = reason_map.get(key, None)
+            reason = reason_map.get(key)
             
             record = ToolExecutionRecord(
                 tool_name=result.tool,
@@ -349,7 +352,7 @@ class IterativeOrchestrator:
         console.print(f"\n[bold magenta][Thought][/] {plan.thought}")
         
         if not plan.calls:
-            console.print(f"\n[bold blue][Action][/] No tools to call")
+            console.print("\n[bold blue][Action][/] No tools to call")
         else:
             console.print(f"\n[bold blue][Action][/] Calling {len(plan.calls)} tool(s):")
             for call in plan.calls:
@@ -366,12 +369,12 @@ class IterativeOrchestrator:
         
         color = status_color.get(observation.status, "white")
         
-        console.print(f"\n[bold cyan][Observation][/]")
+        console.print("\n[bold cyan][Observation][/]")
         console.print(f"  [{color}]Status: {observation.status}[/] (confidence: {observation.confidence:.0%})")
         console.print(f"  {observation.reasoning}")
         
         if observation.information_gaps:
-            console.print(f"\n  [dim]Information gaps:[/]")
+            console.print("\n  [dim]Information gaps:[/]")
             for gap in observation.information_gaps:
                 tool_hint = f" (use {gap.suggested_tool})" if gap.suggested_tool else ""
                 console.print(f"    - [{gap.category}] {gap.description}{tool_hint}")

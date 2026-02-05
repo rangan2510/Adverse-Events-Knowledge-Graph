@@ -2,6 +2,29 @@
 
 This document describes the deterministic tools available for the LLM orchestrator to query the Drug-AE Knowledge Graph. All tools return structured data (never prose) and are designed to be called synchronously.
 
+## Output Handling in ReAct Orchestrator
+
+When tools are called through the ReAct orchestrator (`react_executor.py`), outputs are processed to fit within LLM context limits:
+
+| Setting | Value | Description |
+|---------|-------|-------------|
+| `MAX_ITEMS_PER_TOOL` | 30 | Maximum list items returned per tool call |
+| Truncation indicator | `"...(N more items)"` | Appended when results are truncated |
+
+### Priority Field Formatting
+
+Tool outputs are formatted with priority fields first for better LLM comprehension:
+
+| Tool Type | Priority Fields (in order) |
+|-----------|---------------------------|
+| Adverse Event tools | `ae_label`, `ae_key`, `frequency`, `source` |
+| Drug targets | `gene_symbol`, `gene_key`, `action_type` |
+| Pathway tools | `pathway_name`, `pathway_key`, `source` |
+| Disease tools | `disease_name`, `disease_key`, `score` |
+| Entity resolution | `name`, `key`, `confidence`, `source` |
+
+This ensures the LLM sees human-readable labels before numeric keys.
+
 ## Table of Contents
 
 - [Entity Resolution](#entity-resolution)

@@ -12,8 +12,8 @@ from rich.console import Console
 from rich.progress import track
 
 from kg_ae.config import settings
-from kg_ae.db import get_connection
 from kg_ae.datasets.base import BaseLoader
+from kg_ae.db import get_connection
 
 console = Console()
 
@@ -115,7 +115,7 @@ class ChEMBLLoader(BaseLoader):
             chembl_id = row.get("molecule_chembl_id")
             target_name = row.get("target_pref_name", "")
             best_pchembl = row.get("best_pchembl")
-            mean_pchembl = row.get("mean_pchembl")
+            row.get("mean_pchembl")
             activity_count = row.get("activity_count", 1)
             
             if not chembl_id:
@@ -171,11 +171,16 @@ class ChEMBLLoader(BaseLoader):
                 # Escape quotes in target_name for JSON and SQL
                 target_name_escaped = str(row["target_name"]).replace("'", "''").replace('"', '\\"')
                 target_chembl_escaped = str(row["target_chembl_id"]).replace("'", "''")
-                meta = f'{{"target_chembl_id": "{target_chembl_escaped}", "target_name": "{target_name_escaped}", "best_pchembl": {pchembl_str}, "activity_count": {row["activity_count"]}}}'
+                meta = (
+                    f'{{"target_chembl_id": "{target_chembl_escaped}", '
+                    f'"target_name": "{target_name_escaped}", '
+                    f'"best_pchembl": {pchembl_str}, "activity_count": {row["activity_count"]}}}'
+                )
                 meta_escaped = meta.replace("'", "''")
                 
                 values_parts.append(
-                    f"('{self.claim_type}', {dataset_id}, NULL, '{target_chembl_escaped}', {strength_str}, N'{meta_escaped}')"
+                    f"('{self.claim_type}', {dataset_id}, NULL, "
+                    f"'{target_chembl_escaped}', {strength_str}, N'{meta_escaped}')"
                 )
             
             if not values_parts:
@@ -193,7 +198,7 @@ class ChEMBLLoader(BaseLoader):
             # Build HasClaim edges (Drug -> Claim)
             if inserted:
                 edge_values = []
-                for idx, (claim_key, claim_node_id) in enumerate(inserted):
+                for idx, (_claim_key, claim_node_id) in enumerate(inserted):
                     drug_node_id = batch[idx]["drug_node_id"]
                     edge_values.append(f"('{drug_node_id}', '{claim_node_id}', 'subject')")
                 

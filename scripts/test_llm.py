@@ -137,7 +137,7 @@ What cardiac risks does metformin have?
 
 def run_demo() -> None:
     """Run an interactive demo of the LLM pipeline."""
-    from kg_ae.llm import LLMConfig, PlannerClient, NarratorClient
+    from kg_ae.llm import LLMConfig, NarratorClient, PlannerClient
 
     console.print(Panel("LLM Layer Demo", style="bold green"))
 

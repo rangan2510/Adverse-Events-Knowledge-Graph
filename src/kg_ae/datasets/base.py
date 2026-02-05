@@ -132,7 +132,7 @@ class BaseLoader(ABC):
     license_name: str | None = None
 
     def __init__(self):
-        from kg_ae.db import get_connection, execute
+        from kg_ae.db import execute, get_connection
 
         self.silver_dir = settings.silver_dir / self.source_key
         self.conn = get_connection()

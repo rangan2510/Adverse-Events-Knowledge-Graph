@@ -14,7 +14,8 @@ AVAILABLE_TOOLS = """
 - get_drug_targets(drug_key: int) - Get gene targets for a drug
 - get_gene_pathways(gene_key: int) - Get pathways containing a gene
 - get_gene_diseases(gene_key: int, min_score: float=0.0) - Get disease associations for a gene
-- get_disease_genes(disease_key: int, sources: list[str]=None, min_score: float=0.0) - Get genes associated with a disease
+- get_disease_genes(disease_key: int, sources: list[str]=None, min_score: float=0.0)
+  Get genes associated with a disease
 - get_gene_interactors(gene_key: int, min_score: float=0.4) - Get protein-protein interactions
 - expand_mechanism(drug_key: int) - Get full mechanism (targets + their pathways)
 - expand_gene_context(gene_keys: list[int], min_disease_score: float=0.3) - Get context for multiple genes
@@ -31,10 +32,13 @@ AVAILABLE_TOOLS = """
 
 ### Path Finding
 - find_drug_to_ae_paths(drug_key: int, ae_key: int=None, max_paths: int=10) - Find mechanistic paths
-- explain_paths(drug_key: int, ae_key: int=None, condition_keys: list[int]=None, top_k: int=5) - Explain paths with patient context
+- explain_paths(drug_key: int, ae_key: int=None, condition_keys: list[int]=None, top_k: int=5)
+  Explain paths with patient context
 
 ### Subgraph
-- build_subgraph(drug_keys: list[int], include_targets: bool=True, include_pathways: bool=True, include_diseases: bool=True, include_aes: bool=True) - Build visualization subgraph
+- build_subgraph(drug_keys: list[int], include_targets: bool=True,
+  include_pathways: bool=True, include_diseases: bool=True, include_aes: bool=True)
+  Build visualization subgraph
 """
 
 PLANNER_SYSTEM_PROMPT = """You are a ReAct-style planner for a pharmacovigilance knowledge graph.
@@ -62,14 +66,16 @@ DO NOT output any text before or after the JSON.
 ## Output Format
 
 {{
-  "thought": "I need to find metformin's gene targets to understand the mechanism. I'll use get_drug_targets with the resolved drug key.",
+  "thought": "I need to find metformin's gene targets to understand the mechanism. "
+            "I'll use get_drug_targets with the resolved drug key.",
   "calls": [
     {{"tool": "get_drug_targets", "args": {{"drug_key": 0}}, "reason": "get gene targets"}}
   ],
   "stop_conditions": {{"no_relevant_tools": false, "sufficient_information": false}}
 }}
 
-If you already have enough information from previous iterations, set "sufficient_information" to true and leave "calls" empty.
+If you already have enough information from previous iterations,
+set "sufficient_information" to true and leave "calls" empty.
 If no tools can help answer the query, set "no_relevant_tools" to true and leave "calls" empty.
 
 Respond with ONLY the JSON object, nothing else.
@@ -147,7 +153,8 @@ Return ONLY valid JSON:
   "confidence": 0.0-1.0,
   "reasoning": "Your observation: what was learned, what's missing, can we answer the query?",
   "information_gaps": [
-    {{"category": "mechanism", "description": "Need gene targets", "priority": 1, "suggested_tool": "get_drug_targets"}},
+    {{"category": "mechanism", "description": "Need gene targets",
+      "priority": 1, "suggested_tool": "get_drug_targets"}},
     {{"category": "pathway", "description": "Need pathway data", "priority": 2, "suggested_tool": "get_gene_pathways"}}
   ],
   "can_answer_with_current_data": true|false,

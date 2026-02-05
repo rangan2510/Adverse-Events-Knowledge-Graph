@@ -4,39 +4,39 @@ Tool executor that dispatches tool calls and accumulates evidence.
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from ..tools import (
+    # Subgraph
+    build_subgraph,
+    expand_gene_context,
+    expand_mechanism,
+    explain_paths,
+    # Paths
+    find_drug_to_ae_paths,
+    # Evidence
+    get_claim_evidence,
+    get_disease_genes,
+    # Adverse events
+    get_drug_adverse_events,
+    get_drug_faers_signals,
+    get_drug_label_sections,
+    get_drug_profile,
+    # Mechanism
+    get_drug_targets,
+    get_entity_claims,
+    get_gene_diseases,
+    get_gene_interactors,
+    get_gene_pathways,
+    resolve_adverse_events,
+    resolve_diseases,
     # Entity resolution
     resolve_drugs,
     resolve_genes,
-    resolve_diseases,
-    resolve_adverse_events,
-    # Mechanism
-    get_drug_targets,
-    get_gene_pathways,
-    get_gene_diseases,
-    get_disease_genes,
-    get_gene_interactors,
-    expand_mechanism,
-    expand_gene_context,
-    # Adverse events
-    get_drug_adverse_events,
-    get_drug_profile,
-    get_drug_label_sections,
-    get_drug_faers_signals,
-    # Evidence
-    get_claim_evidence,
-    get_entity_claims,
-    # Paths
-    find_drug_to_ae_paths,
-    explain_paths,
-    # Subgraph
-    build_subgraph,
 )
 from .evidence import EvidencePack
-from .schemas import ToolCall, ToolName, ToolPlan, ResolvedEntities
-
+from .schemas import ResolvedEntities, ToolCall, ToolName, ToolPlan
 
 # Map tool names to actual functions
 TOOL_REGISTRY: dict[ToolName, Callable] = {
@@ -321,10 +321,7 @@ class ToolExecutor:
 
         # Path results
         elif tool in (ToolName.FIND_DRUG_TO_AE_PATHS, ToolName.EXPLAIN_PATHS):
-            if hasattr(result, "paths"):
-                paths_to_add = result.paths
-            else:
-                paths_to_add = result
+            paths_to_add = result.paths if hasattr(result, "paths") else result
             for path in paths_to_add:
                 self.evidence.paths.append({
                     "hops": [

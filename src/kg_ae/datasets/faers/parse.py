@@ -7,12 +7,12 @@ Parses openFDA FAERS bulk data and computes disproportionality signals
 
 import json
 import zipfile
-from pathlib import Path
 from collections import defaultdict
+from pathlib import Path
 
 import polars as pl
 from rich.console import Console
-from rich.progress import track, Progress, SpinnerColumn, TextColumn
+from rich.progress import track
 
 from kg_ae.config import settings
 from kg_ae.datasets.base import BaseParser
@@ -135,7 +135,7 @@ class FAERSParser(BaseParser):
         """Compute PRR and ROR from drug-AE counts."""
         console.print("\n  Step 2: Computing disproportionality signals...")
         
-        with open(counts_path, "r", encoding="utf-8") as f:
+        with open(counts_path, encoding="utf-8") as f:
             counts_data = json.load(f)
         
         drug_ae_counts = {tuple(k.split("|||")): v for k, v in counts_data["drug_ae_counts"].items()}
@@ -176,10 +176,7 @@ class FAERSParser(BaseParser):
             
             # Chi-square for significance
             expected = (a + b) * (a + c) / N
-            if expected > 0:
-                chi2 = ((a - expected) ** 2) / expected
-            else:
-                chi2 = 0
+            chi2 = (a - expected) ** 2 / expected if expected > 0 else 0
             
             # Only keep signals where PRR > 1 and chi2 significant
             if prr > 1.0 and chi2 > 3.84:  # p < 0.05

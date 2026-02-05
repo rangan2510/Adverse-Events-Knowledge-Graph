@@ -15,7 +15,7 @@ from typing import Any
 
 import polars as pl
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, BarColumn, MofNCompleteColumn, TextColumn
+from rich.progress import Progress
 from rich.table import Table
 
 from kg_ae.config import settings

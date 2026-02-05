@@ -1,8 +1,9 @@
 """Quick graph statistics."""
 
-from kg_ae.db import execute
 from rich.console import Console
 from rich.table import Table
+
+from kg_ae.db import execute
 
 console = Console()
 

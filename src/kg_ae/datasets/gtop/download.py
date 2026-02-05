@@ -70,7 +70,7 @@ class GtoPdbDownloader(BaseDownloader):
 
             # Extract version from first line (comment)
             if version is None and filename == "interactions.tsv":
-                with open(dest, "r", encoding="utf-8") as f:
+                with open(dest, encoding="utf-8") as f:
                     first_line = f.readline()
                     # Parse: "# GtoPdb Version: 2025.4 - published: 2025-12-10"
                     if "Version:" in first_line:

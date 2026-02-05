@@ -12,7 +12,7 @@ tables = [
     ("kg.Evidence", "evidence_key"),
 ]
 
-for table, pk in tables:
+for table, _pk in tables:
     rows = execute(f"SELECT COUNT(*) FROM {table}")
     print(f"  {table}: {rows[0][0]:,}")
 

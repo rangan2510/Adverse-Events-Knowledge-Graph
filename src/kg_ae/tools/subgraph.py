@@ -5,7 +5,6 @@ Build and export subgraphs from the knowledge graph.
 """
 
 from dataclasses import dataclass, field
-from typing import Any
 
 from kg_ae.db import execute
 
@@ -104,8 +103,8 @@ def build_subgraph(
     Returns:
         Subgraph object
     """
-    from kg_ae.tools.mechanism import get_drug_targets, get_gene_pathways, get_gene_diseases
     from kg_ae.tools.adverse_events import get_drug_adverse_events
+    from kg_ae.tools.mechanism import get_drug_targets, get_gene_diseases, get_gene_pathways
 
     graph = Subgraph()
     seen_nodes = set()

@@ -4,8 +4,8 @@ Main orchestrator that coordinates Plan -> Execute -> Narrate pipeline.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass, field
-from typing import Iterator
 
 from rich.console import Console
 from rich.panel import Panel

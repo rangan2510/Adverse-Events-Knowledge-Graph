@@ -8,7 +8,6 @@ from pathlib import Path
 
 import polars as pl
 from rich.console import Console
-from rich.table import Table
 
 from kg_ae.datasets.base import BaseNormalizer
 

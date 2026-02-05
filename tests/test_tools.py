@@ -7,52 +7,33 @@ Run with: uv run pytest tests/test_tools.py --run-db
 import pytest
 
 from kg_ae.tools import (
+    ClaimDetail,
+    ClaimEvidence,
+    DiseaseGene,
+    DrugLabelSection,
+    FAERSSignal,
+    GeneInteractor,
+    MechanisticPath,
+    PathStep,
+    ResolvedEntity,
+    ScoringPolicy,
+    get_claim_evidence,
+    get_disease_genes,
+    # Adverse event tools
+    get_drug_adverse_events,
+    get_drug_faers_signals,
+    get_drug_label_sections,
+    get_drug_targets,
+    get_entity_claims,
+    get_gene_diseases,
+    get_gene_interactors,
+    resolve_adverse_events,
+    resolve_diseases,
     # Resolve tools
     resolve_drugs,
     resolve_genes,
-    resolve_diseases,
-    resolve_adverse_events,
-    ResolvedEntity,
-    # Mechanism tools
-    get_drug_targets,
-    get_gene_pathways,
-    get_gene_diseases,
-    get_disease_genes,
-    get_gene_interactors,
-    expand_mechanism,
-    expand_gene_context,
-    DrugTarget,
-    GenePathway,
-    GeneDisease,
-    DiseaseGene,
-    GeneInteractor,
-    # Adverse event tools
-    get_drug_adverse_events,
-    get_drug_profile,
-    get_drug_label_sections,
-    get_drug_faers_signals,
-    DrugAdverseEvent,
-    DrugLabelSection,
-    FAERSSignal,
-    # Subgraph tools
-    build_subgraph,
-    score_edges,
-    Subgraph,
-    Node,
-    Edge,
-    # Path tools
-    find_drug_to_ae_paths,
-    explain_paths,
     score_paths,
     score_paths_with_evidence,
-    MechanisticPath,
-    PathStep,
-    ScoringPolicy,
-    # Evidence tools
-    get_claim_evidence,
-    get_entity_claims,
-    ClaimEvidence,
-    ClaimDetail,
 )
 
 pytestmark = pytest.mark.db
@@ -556,10 +537,8 @@ class TestToolsIntegration:
         claims = get_entity_claims("Drug", drug_key, limit=5)
 
         # Check that at least some claims have evidence
-        has_evidence = False
         for claim in claims:
             if claim.evidence:
-                has_evidence = True
                 # Verify evidence structure
                 for ev in claim.evidence:
                     assert ev.evidence_type is not None

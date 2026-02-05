@@ -2,7 +2,51 @@
 
 ## Overview
 
-Two-phase LLM architecture using llama.cpp:
+The system supports two LLM providers:
+
+| Provider | Planner | Narrator | Best For |
+|----------|---------|----------|----------|
+| **Groq Cloud** | llama-3.3-70b-versatile | Same model | Production, fast queries |
+| **Local llama.cpp** | Phi-4-mini (3.8B) | Phi-4 (14B) | Offline, no API costs |
+
+Configure in `.env`:
+```bash
+KG_AE_LLM_PROVIDER=groq   # or "local"
+```
+
+---
+
+## Groq Cloud Setup
+
+### 1. Get API Key
+1. Sign up at [console.groq.com](https://console.groq.com)
+2. Create API key in Settings > API Keys
+
+### 2. Configure .env
+```bash
+KG_AE_LLM_PROVIDER=groq
+GROQ_API_KEY=gsk_your_api_key_here
+GROQ_MODEL=llama-3.3-70b-versatile
+GROQ_PLANNER_MAX_TOKENS=4096
+GROQ_NARRATOR_MAX_TOKENS=8192
+GROQ_PLANNER_TEMPERATURE=0.1
+GROQ_NARRATOR_TEMPERATURE=0.3
+```
+
+### Available Groq Models
+| Model | Tokens/Day (Free) | Notes |
+|-------|-------------------|-------|
+| llama-3.3-70b-versatile | 6,000 TPM | Recommended |
+| openai/gpt-oss-20b | 200,000 TPD | Reasoning model, uses internal tokens |
+
+### Rate Limits
+Free tier has token limits. Upgrade to Dev Tier for higher limits: [console.groq.com/settings/billing](https://console.groq.com/settings/billing)
+
+---
+
+## Local llama.cpp Setup
+
+Two-phase architecture using local models:
 - **Planner** (Phi-4-mini): Generates tool call plans from user queries (3.8B params)
 - **Narrator** (Phi-4): Synthesizes evidence into summaries (14B params, better context handling)
 

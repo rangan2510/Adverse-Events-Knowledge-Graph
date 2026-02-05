@@ -9,7 +9,6 @@ import json
 
 import polars as pl
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, MofNCompleteColumn
 from rich.table import Table
 
 from kg_ae.config import settings
@@ -81,7 +80,7 @@ class GtoPdbLoader(BaseLoader):
 
         # Focus on approved drugs and synthetic organics
         df = df.filter(
-            (pl.col("is_approved") == True) |
+            (pl.col("is_approved")) |
             (pl.col("ligand_type") == "Synthetic organic")
         )
 
@@ -110,10 +109,7 @@ class GtoPdbLoader(BaseLoader):
             else:
                 pubchem_cid = None
 
-            if chembl_id and str(chembl_id).strip():
-                chembl_id = str(chembl_id).strip()
-            else:
-                chembl_id = None
+            chembl_id = str(chembl_id).strip() if chembl_id and str(chembl_id).strip() else None
 
             if inchikey and str(inchikey).strip():
                 inchikey = str(inchikey).strip()

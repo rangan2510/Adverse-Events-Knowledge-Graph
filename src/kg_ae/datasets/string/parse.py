@@ -5,12 +5,10 @@ Parses STRING protein-protein interaction files to Parquet.
 Maps STRING protein IDs to gene symbols using aliases.
 """
 
-import gzip
 from pathlib import Path
 
 import polars as pl
 from rich.console import Console
-from rich.progress import Progress
 
 from kg_ae.config import settings
 
@@ -52,8 +50,8 @@ class STRINGParser:
         """Parse protein aliases to build ID mapping."""
         # Try different filename patterns
         src_patterns = [
-            self.raw_dir / f"9606.protein.aliases.v12.0.txt.gz",
-            self.raw_dir / f"9606.protein.aliases.v11.5.txt.gz",
+            self.raw_dir / "9606.protein.aliases.v12.0.txt.gz",
+            self.raw_dir / "9606.protein.aliases.v11.5.txt.gz",
         ]
         
         src = None
@@ -115,8 +113,8 @@ class STRINGParser:
     def _parse_links(self) -> Path | None:
         """Parse protein-protein interaction links."""
         src_patterns = [
-            self.raw_dir / f"9606.protein.links.v12.0.txt.gz",
-            self.raw_dir / f"9606.protein.links.v11.5.txt.gz",
+            self.raw_dir / "9606.protein.links.v12.0.txt.gz",
+            self.raw_dir / "9606.protein.links.v11.5.txt.gz",
         ]
         
         src = None

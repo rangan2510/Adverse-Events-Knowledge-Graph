@@ -70,7 +70,7 @@ class HPOParser(BaseParser):
         try:
             # Format: gene_id\tgene_symbol\thpo_id\thpo_name\tfrequency...
             # Find header line (starts with #)
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 for i, line in enumerate(f):
                     if line.startswith("#") and "gene" in line.lower():
                         header_line = i
@@ -88,7 +88,11 @@ class HPOParser(BaseParser):
             )
             
             # Normalize column names
-            df = df.rename({c: c.lower().replace(" ", "_").replace("-", "_").replace("<", "").replace(">", "") for c in df.columns})
+            col_map = {
+                c: c.lower().replace(" ", "_").replace("-", "_").replace("<", "").replace(">", "")
+                for c in df.columns
+            }
+            df = df.rename(col_map)
             
             console.print(f"    Columns: {df.columns}")
             console.print(f"    Raw rows: {len(df):,}")
@@ -123,7 +127,11 @@ class HPOParser(BaseParser):
             )
             
             # Normalize column names
-            df = df.rename({c: c.lower().replace(" ", "_").replace("-", "_").replace("<", "").replace(">", "") for c in df.columns})
+            col_map = {
+                c: c.lower().replace(" ", "_").replace("-", "_").replace("<", "").replace(">", "")
+                for c in df.columns
+            }
+            df = df.rename(col_map)
             
             console.print(f"    Columns: {df.columns}")
             console.print(f"    Raw rows: {len(df):,}")
@@ -144,7 +152,7 @@ class HPOParser(BaseParser):
         
         try:
             # Skip comment lines at the start
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 skip_rows = 0
                 for line in f:
                     if line.startswith("#"):
