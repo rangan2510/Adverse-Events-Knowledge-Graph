@@ -3,35 +3,35 @@
 ```mermaid
 flowchart TD
     START(["User Query"])
-    INIT["Initialize IterativeContext\nmax_iterations = 3\ncumulative_context = empty"]
-    CHECK_CONTINUE{"Can continue?\niteration < max"}
+    INIT["Initialize IterativeContext<br>max_iterations = 3<br>cumulative_context = empty"]
+    CHECK_CONTINUE{"Can continue?<br>iteration < max"}
 
     subgraph REACT_LOOP ["ReAct Iteration Loop"]
         direction TB
-        THOUGHT["**THOUGHT + ACTION**\nPlanner LLM (small model)\n- Reasons about gaps\n- Selects tools + args\n- Outputs ToolPlan"]
+        THOUGHT["**THOUGHT + ACTION**<br>Planner LLM (small model)<br>- Reasons about gaps<br>- Selects tools + args<br>- Outputs ToolPlan"]
         
-        STOP_CHECK{"Planner\nstop signal?"}
-        STOP_REASON["sufficient_information\nOR no_relevant_tools"]
+        STOP_CHECK{"Planner<br>stop signal?"}
+        STOP_REASON["sufficient_information<br>OR no_relevant_tools"]
 
-        EXECUTE["**EXECUTE**\nTool Executor runs synchronously\n-- LLM is blocked --\nresolve_drugs, get_drug_targets,\nget_gene_pathways, find_paths, etc.\nMax 30 items per tool, priority fields first"]
+        EXECUTE["**EXECUTE**<br>Tool Executor runs synchronously<br>-- LLM is blocked --<br>resolve_drugs, get_drug_targets,<br>get_gene_pathways, find_paths, etc.<br>Max 30 items per tool, priority fields first"]
 
-        OBSERVE["**OBSERVATION**\nNarrator LLM (large model)\n- Evaluates tool outputs\n- Identifies remaining gaps\n- Classifies sufficiency"]
+        OBSERVE["**OBSERVATION**<br>Narrator LLM (large model)<br>- Evaluates tool outputs<br>- Identifies remaining gaps<br>- Classifies sufficiency"]
 
-        SUFFICIENCY{"Sufficiency\nstatus?"}
+        SUFFICIENCY{"Sufficiency<br>status?"}
     end
 
-    UPDATE["Update cumulative_context\nAppend: thought + tool outputs + observation"]
+    UPDATE["Update cumulative_context<br>Append: thought + tool outputs + observation"]
     INCREMENT["Increment iteration counter"]
 
-    MAX_ITER["Max iterations reached\nBest-effort response"]
+    MAX_ITER["Max iterations reached<br>Best-effort response"]
     
-    FINAL["**Generate Final Response**\nNarrator synthesizes ALL iterations\nReferences ONLY tool outputs"]
+    FINAL["**Generate Final Response**<br>Narrator synthesizes ALL iterations<br>References ONLY tool outputs"]
 
     subgraph OUTPUTS ["Three Output Artifacts"]
         direction LR
-        O1["Subgraph JSON\nnodes + edges\n+ evidence IDs\n+ scores"]
-        O2["Ranked Paths\ntop-K mechanistic\npaths with\nprovenance"]
-        O3["Narrative\nSummary\nLLM-generated\ntext"]
+        O1["Subgraph JSON<br>nodes + edges<br>+ evidence IDs<br>+ scores"]
+        O2["Ranked Paths<br>top-K mechanistic<br>paths with<br>provenance"]
+        O3["Narrative<br>Summary<br>LLM-generated<br>text"]
     end
 
     START --> INIT --> CHECK_CONTINUE
@@ -44,8 +44,8 @@ flowchart TD
     EXECUTE --> OBSERVE
     OBSERVE --> SUFFICIENCY
 
-    SUFFICIENCY -- "SUFFICIENT\ncan_answer = true" --> FINAL
-    SUFFICIENCY -- "NEEDS_MORE\ngaps identified" --> UPDATE
+    SUFFICIENCY -- "SUFFICIENT<br>can_answer = true" --> FINAL
+    SUFFICIENCY -- "NEEDS_MORE<br>gaps identified" --> UPDATE
     UPDATE --> INCREMENT --> CHECK_CONTINUE
 
     FINAL --> OUTPUTS
