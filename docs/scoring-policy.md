@@ -23,7 +23,7 @@ Every relationship in the graph is mediated by a **Claim** node $c \in C$. A cla
 $$c = (\text{type}, \sigma_c, \pi_c, d_c)$$
 
 where:
-- $\text{type} \in \{\texttt{DRUG\_TARGET}, \texttt{GENE\_DISEASE}, \texttt{GENE\_PATHWAY}, \texttt{DRUG\_AE\_LABEL}, \ldots\}$
+- $\text{type} \in \{\texttt{DRUG TARGET}, \texttt{GENE DISEASE}, \texttt{GENE PATHWAY}, \texttt{DRUG AE LABEL}, \ldots\}$
 - $\sigma_c \in [0, 1]$ is the **strength score** (computed at ETL time)
 - $\pi_c \in \{-1, 0, +1\}$ is the **polarity** (inhibitory, unknown, activating)
 - $d_c$ is the **source dataset** identifier
@@ -63,7 +63,7 @@ $$\sigma_{\text{ChEMBL}}(c) = \text{clamp}\!\left(\frac{\text{pChEMBL} - 4}{6},\
 
 **GtoPdb** uses the same logarithmic affinity scale (pK$_i$, pIC$_{50}$, pK$_d$, pEC$_{50}$):
 
-$$\sigma_{\text{GtoPdb}}(c) = \text{clamp}\!\left(\frac{\text{affinity\_median}}{10},\ 0,\ 1\right)$$
+$$\sigma_{\text{GtoPdb}}(c) = \text{clamp}\!\left(\frac{\text{affinity median}}{10},\ 0,\ 1\right)$$
 
 | pK$_i$ | Interpretation | $\sigma$ |
 |---------|----------------|----------|
@@ -231,9 +231,9 @@ $$S(\rho) = \underbrace{\sigma_{\text{base}}}_{\text{claim strength}} \times \un
 
 where:
 
-$$\sigma_{\text{base}} = \sigma_{c^*}, \quad c^* = \text{primary claim on the path}$$
+$$\sigma_{\text{base}} = \sigma_{c^{*}}, \quad c^{*} = \text{primary claim on the path}$$
 
-If $\sigma_{c^*}$ is NULL, the default is $\sigma_{\text{base}} = 0.5$.
+If $\sigma_{c^{*}}$ is NULL, the default is $\sigma_{\text{base}} = 0.5$.
 
 $$\lambda = 0.95 \quad \text{(length penalty per hop)}$$
 
@@ -301,8 +301,8 @@ where:
 
 $$\alpha_{\text{type}} = \begin{cases}
 1.0 & \texttt{TARGETS} & \text{(drug-target, experimentally validated)} \\
-0.9 & \texttt{IN\_PATHWAY} & \text{(curated pathway membership)} \\
-0.8 & \texttt{ASSOCIATED\_WITH} & \text{(gene-disease, often statistical)} \\
+0.9 & \texttt{IN PATHWAY} & \text{(curated pathway membership)} \\
+0.8 & \texttt{ASSOCIATED WITH} & \text{(gene-disease, often statistical)} \\
 0.7 & \texttt{CAUSES} & \text{(drug-AE, observational)} \\
 0.5 & \text{other} & \text{(default)}
 \end{cases}$$
@@ -325,7 +325,7 @@ $$\rho_A: \text{Atorvastatin} \xrightarrow{\texttt{CAUSES}} \text{Myopathy}$$
 $$S(\rho_A) = 0.055 \times 0.95 \times 1.0 = 0.052$$
 
 ### Path B: Mechanistic via HMGCR
-$$\rho_B: \text{Atorvastatin} \xrightarrow{\texttt{TARGETS}} \text{HMGCR} \xrightarrow{\texttt{IN\_PATHWAY}} \text{Cholesterol Biosynthesis}$$
+$$\rho_B: \text{Atorvastatin} \xrightarrow{\texttt{TARGETS}} \text{HMGCR} \xrightarrow{\texttt{IN PATHWAY}} \text{Cholesterol Biosynthesis}$$
 
 - $\sigma_{\text{base}} = 0.8$ (DrugCentral curated target)
 - $k = 2$, $\lambda^2 = 0.9025$
@@ -334,7 +334,7 @@ $$\rho_B: \text{Atorvastatin} \xrightarrow{\texttt{TARGETS}} \text{HMGCR} \xrigh
 $$S(\rho_B) = 0.8 \times 0.9025 \times 1.2 = 0.866$$
 
 ### Path C: Mechanistic via disease context
-$$\rho_C: \text{Atorvastatin} \xrightarrow{\texttt{TARGETS}} \text{HMGCR} \xrightarrow{\texttt{ASSOCIATED\_WITH}} \text{Type 2 Diabetes}$$
+$$\rho_C: \text{Atorvastatin} \xrightarrow{\texttt{TARGETS}} \text{HMGCR} \xrightarrow{\texttt{ASSOCIATED WITH}} \text{Type 2 Diabetes}$$
 
 - $\sigma_{\text{base}} = 0.65$ (Open Targets gene-disease score for HMGCR-T2D)
 - $k = 2$, $\lambda^2 = 0.9025$
@@ -359,15 +359,15 @@ The system surfaces the mechanistic explanations over the bare label frequency, 
 
 | Source | Claim Type | Formula | Domain Basis |
 |--------|-----------|---------|--------------|
-| ChEMBL | `DRUG_TARGET` | $\text{clamp}\!\left(\frac{\text{pChEMBL} - 4}{6},\ 0,\ 1\right)$ | Binding potency (K$_i$, IC$_{50}$) |
-| GtoPdb | `DRUG_TARGET` | $\text{clamp}\!\left(\frac{\text{pAffinity}}{10},\ 0,\ 1\right)$ | Pharmacological affinity (pK$_i$, pIC$_{50}$) |
-| Open Targets | `GENE_DISEASE` | $s_{\text{OT}}$ (pass-through) | Multi-evidence integration |
-| FAERS | `DRUG_AE_FAERS` | $\text{clamp}\!\left(\frac{\log_{10}(\text{PRR})}{2},\ 0,\ 1\right)$ | Disproportionality signal |
-| SIDER | `DRUG_AE_LABEL` | $\frac{f_{\text{lower}} + f_{\text{upper}}}{2}$ | Clinical trial frequency |
-| STRING | `GENE_GENE` | $\frac{s_{\text{combined}}}{1000}$ | PPI confidence (experimental + computational) |
-| ClinGen | `GENE_DISEASE` | Ordinal lookup (Definitive=1.0 $\to$ Refuted=0.1) | Expert panel classification |
-| CTD (drug-gene) | `DRUG_GENE` | $\min(0.5 + 0.1 \cdot n_{\text{PMID}},\ 1.0)$ | Literature citation volume |
-| CTD (gene-disease) | `GENE_DISEASE` | $\min(\beta + 0.05 \cdot n_{\text{PMID}},\ 1.0)$; $\beta \in \{0.5, 0.8\}$ | Direct vs inferred evidence |
-| CTD (drug-disease) | `DRUG_DISEASE` | $0.9$ (therapeutic) or $0.7$ (marker) | Relationship type |
-| openFDA | `DRUG_LABEL` | $0.9$ / $0.7$ / $0.5$ | Label section severity |
-| HPO | `GENE_PHENOTYPE` | NULL (defaults to $0.5$) | No native confidence metric |
+| ChEMBL | DRUG TARGET | $\text{clamp}\!\left(\frac{\text{pChEMBL} - 4}{6},\ 0,\ 1\right)$ | Binding potency (K$_i$, IC$_{50}$) |
+| GtoPdb | DRUG TARGET | $\text{clamp}\!\left(\frac{\text{pAffinity}}{10},\ 0,\ 1\right)$ | Pharmacological affinity (pK$_i$, pIC$_{50}$) |
+| Open Targets | GENE DISEASE | $s_{\text{OT}}$ (pass-through) | Multi-evidence integration |
+| FAERS | DRUG AE FAERS | $\text{clamp}\!\left(\frac{\log_{10}(\text{PRR})}{2},\ 0,\ 1\right)$ | Disproportionality signal |
+| SIDER | DRUG AE LABEL | $\frac{f_{\text{lower}} + f_{\text{upper}}}{2}$ | Clinical trial frequency |
+| STRING | GENE GENE | $\frac{s_{\text{combined}}}{1000}$ | PPI confidence (experimental + computational) |
+| ClinGen | GENE DISEASE | Ordinal lookup (Definitive=1.0 $\to$ Refuted=0.1) | Expert panel classification |
+| CTD (drug-gene) | DRUG GENE | $\min(0.5 + 0.1 \cdot n_{\text{PMID}},\ 1.0)$ | Literature citation volume |
+| CTD (gene-disease) | GENE DISEASE | $\min(\beta + 0.05 \cdot n_{\text{PMID}},\ 1.0)$; $\beta \in \{0.5, 0.8\}$ | Direct vs inferred evidence |
+| CTD (drug-disease) | DRUG DISEASE | $0.9$ (therapeutic) or $0.7$ (marker) | Relationship type |
+| openFDA | DRUG LABEL | $0.9$ / $0.7$ / $0.5$ | Label section severity |
+| HPO | GENE PHENOTYPE | NULL (defaults to $0.5$) | No native confidence metric |
