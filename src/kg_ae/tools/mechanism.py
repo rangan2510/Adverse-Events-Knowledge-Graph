@@ -45,21 +45,30 @@ class GeneDisease:
 
 def get_drug_targets(drug_key: int) -> list[DrugTarget]:
     """
-    Get all gene targets for a drug.
+    Get all unique gene targets for a drug (deduplicated by gene).
+
+    Multiple claims from different datasets pointing to the same gene
+    are collapsed into a single row.  The first non-NULL relation,
+    effect, and claim_type encountered are kept.
 
     Args:
         drug_key: The drug's primary key
 
     Returns:
-        List of DrugTarget objects
+        List of DrugTarget objects (one per unique gene)
     """
     rows = execute(
         """
-        SELECT 
-            d.drug_key, d.preferred_name,
-            g.gene_key, g.symbol,
-            cg.relation, cg.effect,
-            c.claim_type
+        SELECT
+            d.drug_key,
+            d.preferred_name,
+            g.gene_key,
+            g.symbol,
+            -- keep one representative value per gene
+            MIN(cg.relation)   AS relation,
+            MIN(cg.effect)     AS effect,
+            MIN(c.claim_type)  AS claim_type,
+            COUNT(*)           AS claim_count
         FROM kg.Drug d
             , kg.HasClaim hc
             , kg.Claim c
@@ -67,6 +76,8 @@ def get_drug_targets(drug_key: int) -> list[DrugTarget]:
             , kg.Gene g
         WHERE MATCH(d-(hc)->c-(cg)->g)
           AND d.drug_key = ?
+        GROUP BY d.drug_key, d.preferred_name, g.gene_key, g.symbol
+        ORDER BY claim_count DESC, g.symbol
         """,
         (drug_key,),
         commit=False,
@@ -87,17 +98,17 @@ def get_drug_targets(drug_key: int) -> list[DrugTarget]:
 
 def get_gene_pathways(gene_key: int) -> list[GenePathway]:
     """
-    Get all pathways for a gene.
+    Get all unique pathways for a gene (deduplicated by pathway).
 
     Args:
         gene_key: The gene's primary key
 
     Returns:
-        List of GenePathway objects
+        List of GenePathway objects (one per unique pathway)
     """
     rows = execute(
         """
-        SELECT 
+        SELECT
             g.gene_key, g.symbol,
             p.pathway_key, p.label, p.reactome_id
         FROM kg.Gene g
@@ -107,6 +118,9 @@ def get_gene_pathways(gene_key: int) -> list[GenePathway]:
             , kg.Pathway p
         WHERE MATCH(g-(hc)->c-(cp)->p)
           AND g.gene_key = ?
+        GROUP BY g.gene_key, g.symbol,
+                 p.pathway_key, p.label, p.reactome_id
+        ORDER BY p.label
         """,
         (gene_key,),
         commit=False,
@@ -136,10 +150,10 @@ def get_gene_diseases(gene_key: int, min_score: float = 0.0) -> list[GeneDisease
     """
     rows = execute(
         """
-        SELECT 
+        SELECT
             g.gene_key, g.symbol,
             dis.disease_key, dis.label, dis.efo_id,
-            c.strength_score
+            MAX(c.strength_score) AS strength_score
         FROM kg.Gene g
             , kg.HasClaim hc
             , kg.Claim c
@@ -148,7 +162,9 @@ def get_gene_diseases(gene_key: int, min_score: float = 0.0) -> list[GeneDisease
         WHERE MATCH(g-(hc)->c-(cd)->dis)
           AND g.gene_key = ?
           AND (c.strength_score IS NULL OR c.strength_score >= ?)
-        ORDER BY c.strength_score DESC
+        GROUP BY g.gene_key, g.symbol,
+                 dis.disease_key, dis.label, dis.efo_id
+        ORDER BY strength_score DESC
         """,
         (gene_key, min_score),
         commit=False,
