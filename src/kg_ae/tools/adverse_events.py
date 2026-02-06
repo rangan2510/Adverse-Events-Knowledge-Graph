@@ -43,7 +43,8 @@ def get_drug_adverse_events(
             SELECT TOP {limit}
                 d.drug_key, d.preferred_name,
                 ae.ae_key, ae.ae_label,
-                cae.frequency, cae.relation
+                MAX(cae.frequency) AS frequency,
+                MIN(cae.relation)  AS relation
             FROM kg.Drug d
                 , kg.HasClaim hc
                 , kg.Claim c
@@ -52,7 +53,9 @@ def get_drug_adverse_events(
             WHERE MATCH(d-(hc)->c-(cae)->ae)
               AND d.drug_key = ?
               AND (cae.frequency IS NULL OR cae.frequency >= ?)
-            ORDER BY cae.frequency DESC
+            GROUP BY d.drug_key, d.preferred_name,
+                     ae.ae_key, ae.ae_label
+            ORDER BY frequency DESC
             """,
             (drug_key, min_frequency),
             commit=False,
@@ -63,7 +66,8 @@ def get_drug_adverse_events(
             SELECT TOP {limit}
                 d.drug_key, d.preferred_name,
                 ae.ae_key, ae.ae_label,
-                cae.frequency, cae.relation
+                MAX(cae.frequency) AS frequency,
+                MIN(cae.relation)  AS relation
             FROM kg.Drug d
                 , kg.HasClaim hc
                 , kg.Claim c
@@ -71,7 +75,9 @@ def get_drug_adverse_events(
                 , kg.AdverseEvent ae
             WHERE MATCH(d-(hc)->c-(cae)->ae)
               AND d.drug_key = ?
-            ORDER BY cae.frequency DESC
+            GROUP BY d.drug_key, d.preferred_name,
+                     ae.ae_key, ae.ae_label
+            ORDER BY frequency DESC
             """,
             (drug_key,),
             commit=False,
