@@ -23,7 +23,7 @@ Every relationship in the graph is mediated by a **Claim** node $c \in C$. A cla
 $$c = (\text{type}, \sigma_c, \pi_c, d_c)$$
 
 where:
-- $\text{type} \in \{\texttt{DRUG\_TARGET}, \texttt{GENE\_DISEASE}, \texttt{GENE\_PATHWAY}, \texttt{DRUG\_AE\_LABEL}, \ldots\}$
+- $\text{type} \in \{\texttt{DRUG$_$TARGET}, \texttt{GENE\_DISEASE}, \texttt{GENE\_PATHWAY}, \texttt{DRUG\_AE\_LABEL}, \ldots\}$
 - $\sigma_c \in [0, 1]$ is the **strength score** (computed at ETL time)
 - $\pi_c \in \{-1, 0, +1\}$ is the **polarity** (inhibitory, unknown, activating)
 - $d_c$ is the **source dataset** identifier
