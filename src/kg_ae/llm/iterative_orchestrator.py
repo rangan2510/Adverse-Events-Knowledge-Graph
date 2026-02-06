@@ -376,42 +376,20 @@ class IterativeOrchestrator:
         return "\n".join(lines)
     
     def _summarize_result(self, result: Any) -> str:
-        """Create detailed summary of tool result for LLM context.
-
-        Includes actual data (truncated) so the LLM can see resolved keys,
-        target names, adverse event labels, etc.
-        """
-        import json
-
+        """Create brief summary of tool result."""
         if not result.success:
             return "Failed"
-
+        
         if result.result is None:
             return "No data"
-
-        MAX_CHARS = 6000  # Enough for LLM to see full AE/target lists
-
-        try:
-            serialized = result.result
-            text = json.dumps(serialized, indent=None, default=str, ensure_ascii=False)
-            if len(text) > MAX_CHARS:
-                # Count items and show truncation notice
-                if isinstance(serialized, list):
-                    count = len(serialized)
-                    truncated = json.dumps(serialized[:10], indent=None, default=str, ensure_ascii=False)
-                    return f"{count} items (showing first 10): {truncated}"
-                elif isinstance(serialized, dict):
-                    count = len(serialized)
-                    # Show all keys but truncate values
-                    return f"{count} entries: {text[:MAX_CHARS]}..."
-                return text[:MAX_CHARS] + "..."
-            return text
-        except Exception:
-            if isinstance(result.result, list):
-                return f"{len(result.result)} items"
-            if isinstance(result.result, dict):
-                return f"{len(result.result)} entries"
-            return "Success"
+        
+        if isinstance(result.result, list):
+            return f"{len(result.result)} items"
+        
+        if isinstance(result.result, dict):
+            return f"{len(result.result)} entries"
+        
+        return "Success"
     
     def _display_thought_action(self, plan: ToolPlan) -> None:
         """Display the planner's thought and action (tool plan)."""

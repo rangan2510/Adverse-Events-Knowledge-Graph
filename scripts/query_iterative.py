@@ -22,8 +22,6 @@ load_dotenv(override=True)
 
 import argparse
 import sys
-from dataclasses import dataclass, field
-from typing import Any
 
 from rich.console import Console
 from rich.markdown import Markdown
@@ -35,145 +33,126 @@ from kg_ae.llm import (
     NarratorClient,
     PlannerClient,
 )
-from kg_ae.llm.executor import ToolExecutor
 
 console = Console()
-
-# Module-level executor holder (reusable across iterations)
-_tool_executor: ToolExecutor | None = None
-
-
-@dataclass
-class ToolResult:
-    """Result from a single tool execution."""
-    tool: str
-    args: dict
-    success: bool
-    result: Any = None
-    error: str | None = None
-    reason: str | None = None
-
-
-def _init_executor():
-    """Initialize or reuse the ToolExecutor (persists resolved keys across iterations)."""
-    global _tool_executor
-    if _tool_executor is None:
-        _tool_executor = ToolExecutor(conn=None)
-    return _tool_executor
-
-
-def _serialize_item(item: Any) -> Any:
-    """Convert dataclass / complex objects to JSON-safe dicts."""
-    if item is None:
-        return None
-    if isinstance(item, (str, int, float, bool)):
-        return item
-    if isinstance(item, (list, tuple)):
-        return [_serialize_item(i) for i in item]
-    if isinstance(item, dict):
-        return {k: _serialize_item(v) for k, v in item.items()}
-    if hasattr(item, "__dataclass_fields__"):
-        return {
-            k: _serialize_item(getattr(item, k))
-            for k in item.__dataclass_fields__
-        }
-    return str(item)
-
-
-def _summarize_for_context(tool_name: str, result: Any) -> Any:
-    """Truncate large results so they fit in LLM context."""
-    MAX_ITEMS = 100
-    serialized = _serialize_item(result)
-    if isinstance(serialized, list) and len(serialized) > MAX_ITEMS:
-        return serialized[:MAX_ITEMS]
-    return serialized
-
-
-def _accumulate_resolved_keys(executor: ToolExecutor, tool, result):
-    """
-    Store resolved entity keys so subsequent tool calls can use them.
-
-    Handles the actual return types from tool functions:
-    - resolve_drugs returns dict[str, ResolvedEntity|None]
-    - resolve_genes returns dict[str, ResolvedEntity|None]
-    - resolve_diseases returns dict[str, ResolvedEntity|None]
-    - resolve_adverse_events returns dict[str, ResolvedEntity|None]
-    """
-    from kg_ae.llm.schemas import ToolName
-
-    try:
-        if tool == ToolName.RESOLVE_DRUGS and isinstance(result, dict):
-            for name, entity in result.items():
-                if entity is not None and hasattr(entity, "key"):
-                    executor.resolved.drug_keys[name.lower()] = entity.key
-        elif tool == ToolName.RESOLVE_GENES and isinstance(result, dict):
-            for symbol, entity in result.items():
-                if entity is not None and hasattr(entity, "key"):
-                    executor.resolved.gene_keys[symbol.upper()] = entity.key
-        elif tool == ToolName.RESOLVE_DISEASES and isinstance(result, dict):
-            for term, entity in result.items():
-                if entity is not None and hasattr(entity, "key"):
-                    executor.resolved.disease_keys[term.lower()] = entity.key
-        elif tool == ToolName.RESOLVE_ADVERSE_EVENTS and isinstance(result, dict):
-            for term, entity in result.items():
-                if entity is not None and hasattr(entity, "key"):
-                    executor.resolved.ae_keys[term.lower()] = entity.key
-    except Exception:
-        pass  # Best-effort: don't fail the tool call over accumulation
 
 
 def execute_tools_for_plan(plan):
     """
-    Execute tools from a ToolPlan against the real database.
-
+    Execute tools from a ToolPlan.
+    
     Takes a ToolPlan object (with thought, calls, stop_conditions)
-    and executes each tool call via ToolExecutor, returning results.
+    and executes each tool call, returning results.
+    
+    Args:
+        plan: ToolPlan object from planner
+        
+    Returns:
+        list of ToolResult-like objects
     """
-    executor = _init_executor()
+    from dataclasses import dataclass
+    from typing import Any
+    
+    @dataclass
+    class ToolResult:
+        tool: str
+        args: dict
+        success: bool
+        result: Any = None
+        error: str | None = None
+        reason: str | None = None
+    
     results = []
-
+    
     for call in plan.calls:
-        from kg_ae.llm.executor import TOOL_REGISTRY
-
-        tool_fn = TOOL_REGISTRY.get(call.tool)
-        if tool_fn is None:
-            results.append(ToolResult(
-                tool=call.tool.value if hasattr(call.tool, "value") else str(call.tool),
+        # Mock execution - replace with actual tool implementation
+        if call.tool == "resolve_drugs":
+            result = ToolResult(
+                tool=call.tool,
+                args=call.args,
+                success=True,
+                result=[{"name": "metformin", "drug_key": 14042}],
+                reason=call.reason,
+            )
+        elif call.tool == "get_drug_adverse_events":
+            result = ToolResult(
+                tool=call.tool,
+                args=call.args,
+                success=True,
+                result=[{"ae": "lactic acidosis", "frequency": 0.001}] * 84,
+                reason=call.reason,
+            )
+        elif call.tool == "get_drug_targets":
+            result = ToolResult(
+                tool=call.tool,
+                args=call.args,
+                success=True,
+                result=[{"gene": "AMPK", "action": "activator"}],
+                reason=call.reason,
+            )
+        elif call.tool == "expand_mechanism":
+            result = ToolResult(
+                tool=call.tool,
+                args=call.args,
+                success=True,
+                result={"pathways": ["glucose metabolism", "lipid metabolism"]},
+                reason=call.reason,
+            )
+        elif call.tool == "get_gene_pathways":
+            result = ToolResult(
+                tool=call.tool,
+                args=call.args,
+                success=True,
+                result=[
+                    {"pathway": "AMPK signaling pathway", "reactome_id": "R-HSA-380972"},
+                    {"pathway": "Glucose metabolism", "reactome_id": "R-HSA-70326"},
+                    {"pathway": "Mitochondrial biogenesis", "reactome_id": "R-HSA-1592230"},
+                ],
+                reason=call.reason,
+            )
+        elif call.tool == "resolve_genes":
+            result = ToolResult(
+                tool=call.tool,
+                args=call.args,
+                success=True,
+                result=[{"name": "PRKAA1", "gene_key": 5562, "symbol": "AMPK"}],
+                reason=call.reason,
+            )
+        elif call.tool == "get_gene_diseases":
+            result = ToolResult(
+                tool=call.tool,
+                args=call.args,
+                success=True,
+                result=[
+                    {"disease": "Type 2 Diabetes", "mondo_id": "MONDO:0005148"},
+                    {"disease": "Metabolic syndrome", "mondo_id": "MONDO:0005152"},
+                ],
+                reason=call.reason,
+            )
+        elif call.tool == "get_drug_profile":
+            result = ToolResult(
+                tool=call.tool,
+                args=call.args,
+                success=True,
+                result={
+                    "name": "metformin",
+                    "drug_class": "biguanide",
+                    "indications": ["Type 2 Diabetes"],
+                    "targets": ["AMPK", "Complex I"],
+                },
+                reason=call.reason,
+            )
+        else:
+            result = ToolResult(
+                tool=call.tool,
                 args=call.args,
                 success=False,
                 error=f"Unknown tool: {call.tool}",
                 reason=call.reason,
-            ))
-            continue
-
-        # Substitute resolved keys
-        args = executor._substitute_keys(call.args)
-
-        try:
-            raw_result = tool_fn(**args)
-            # Accumulate resolved keys for subsequent calls (best-effort)
-            _accumulate_resolved_keys(executor, call.tool, raw_result)
-            # Convert to serializable form for LLM context
-            summarized = _summarize_for_context(
-                call.tool.value if hasattr(call.tool, "value") else str(call.tool),
-                raw_result,
             )
-            results.append(ToolResult(
-                tool=call.tool.value if hasattr(call.tool, "value") else str(call.tool),
-                args=call.args,
-                success=True,
-                result=summarized,
-                reason=call.reason,
-            ))
-        except Exception as e:
-            results.append(ToolResult(
-                tool=call.tool.value if hasattr(call.tool, "value") else str(call.tool),
-                args=call.args,
-                success=False,
-                error=str(e),
-                reason=call.reason,
-            ))
-
+        
+        results.append(result)
+    
     return results
 
 

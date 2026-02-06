@@ -120,11 +120,8 @@ class ToolExecutor:
         args = self._substitute_keys(call.args)
 
         try:
-            result = tool_fn(**args)
-            try:
-                self._accumulate_result(call.tool, args, result)
-            except Exception:
-                pass  # Best-effort accumulation
+            result = tool_fn(self.conn, **args)
+            self._accumulate_result(call.tool, args, result)
             self.evidence.tool_log.append({
                 "tool": call.tool.value,
                 "args": args,
@@ -194,50 +191,48 @@ class ToolExecutor:
     def _accumulate_result(self, tool: ToolName, args: dict, result: Any) -> None:
         """Store tool result in evidence pack."""
         # Entity resolution results
-        # resolve_* tools return dict[str, ResolvedEntity|None]
-        # ResolvedEntity has: key, name, source, confidence
-        if tool == ToolName.RESOLVE_DRUGS and isinstance(result, dict):
-            for input_name, entity in result.items():
-                if entity is not None and entity.key:
-                    self.resolved.drug_keys[input_name.lower()] = entity.key
-                    self.evidence.drug_keys.add(entity.key)
-                    self.evidence.entity_info[f"drug:{entity.key}"] = {
-                        "name": entity.name,
-                        "input": input_name,
-                        "confidence": entity.confidence,
+        if tool == ToolName.RESOLVE_DRUGS:
+            for res in result:
+                if res.drug_key:
+                    self.resolved.drug_keys[res.input_name.lower()] = res.drug_key
+                    self.evidence.drug_keys.add(res.drug_key)
+                    self.evidence.entity_info[f"drug:{res.drug_key}"] = {
+                        "name": res.drug_name,
+                        "input": res.input_name,
+                        "confidence": res.confidence,
                     }
 
-        elif tool == ToolName.RESOLVE_GENES and isinstance(result, dict):
-            for input_symbol, entity in result.items():
-                if entity is not None and entity.key:
-                    self.resolved.gene_keys[input_symbol.upper()] = entity.key
-                    self.evidence.gene_keys.add(entity.key)
-                    self.evidence.entity_info[f"gene:{entity.key}"] = {
-                        "symbol": entity.name,
-                        "input": input_symbol,
-                        "confidence": entity.confidence,
+        elif tool == ToolName.RESOLVE_GENES:
+            for res in result:
+                if res.gene_key:
+                    self.resolved.gene_keys[res.input_symbol.upper()] = res.gene_key
+                    self.evidence.gene_keys.add(res.gene_key)
+                    self.evidence.entity_info[f"gene:{res.gene_key}"] = {
+                        "symbol": res.gene_symbol,
+                        "input": res.input_symbol,
+                        "confidence": res.confidence,
                     }
 
-        elif tool == ToolName.RESOLVE_DISEASES and isinstance(result, dict):
-            for input_term, entity in result.items():
-                if entity is not None and entity.key:
-                    self.resolved.disease_keys[input_term.lower()] = entity.key
-                    self.evidence.disease_keys.add(entity.key)
-                    self.evidence.entity_info[f"disease:{entity.key}"] = {
-                        "name": entity.name,
-                        "input": input_term,
-                        "confidence": entity.confidence,
+        elif tool == ToolName.RESOLVE_DISEASES:
+            for res in result:
+                if res.disease_key:
+                    self.resolved.disease_keys[res.input_term.lower()] = res.disease_key
+                    self.evidence.disease_keys.add(res.disease_key)
+                    self.evidence.entity_info[f"disease:{res.disease_key}"] = {
+                        "name": res.disease_name,
+                        "input": res.input_term,
+                        "confidence": res.confidence,
                     }
 
-        elif tool == ToolName.RESOLVE_ADVERSE_EVENTS and isinstance(result, dict):
-            for input_term, entity in result.items():
-                if entity is not None and entity.key:
-                    self.resolved.ae_keys[input_term.lower()] = entity.key
-                    self.evidence.ae_keys.add(entity.key)
-                    self.evidence.entity_info[f"ae:{entity.key}"] = {
-                        "label": entity.name,
-                        "input": input_term,
-                        "confidence": entity.confidence,
+        elif tool == ToolName.RESOLVE_ADVERSE_EVENTS:
+            for res in result:
+                if res.ae_key:
+                    self.resolved.ae_keys[res.input_term.lower()] = res.ae_key
+                    self.evidence.ae_keys.add(res.ae_key)
+                    self.evidence.entity_info[f"ae:{res.ae_key}"] = {
+                        "label": res.ae_label,
+                        "input": res.input_term,
+                        "confidence": res.confidence,
                     }
 
         # Mechanism results - accumulate into graph
