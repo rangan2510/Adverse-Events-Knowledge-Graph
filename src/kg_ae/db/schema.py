@@ -8,21 +8,21 @@ from pathlib import Path
 
 from kg_ae.db.connection import execute_script
 
-SCHEMA_FILE = Path(__file__).parent.parent.parent.parent / "docs" / "schema.md"
+SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 
 
 def load_schema_sql(schema_path: Path) -> str:
     """
     Load SQL schema from file.
 
-    The schema.md file is raw SQL with comment headers (not markdown code blocks).
+    The schema.sql file is raw SQL with comment headers.
     """
     return schema_path.read_text(encoding="utf-8")
 
 
 def init_schema() -> None:
     """
-    Initialize the database schema from docs/schema.md.
+    Initialize the database schema from the bundled schema.sql file.
 
     This creates:
     - kg schema namespace
