@@ -174,6 +174,20 @@ class OpenTargetsLoader(BaseLoader):
                 count += 1
                 continue
 
+            # Only assign uniprot_id if it is not already taken by another gene.
+            # This mirrors the guard in hgnc/load.py and prevents violating
+            # the UX_Gene_UniP unique index when multiple Open Targets targets
+            # share the same UniProt accession, or when HGNC already assigned
+            # that accession to a different gene row.
+            safe_uniprot = None
+            if uniprot_id:
+                gene_with_same_uniprot = self._execute(
+                    "SELECT gene_key FROM kg.Gene WHERE uniprot_id = ?",
+                    (uniprot_id,),
+                )
+                if not gene_with_same_uniprot:
+                    safe_uniprot = uniprot_id
+
             # Try to update existing gene by symbol
             self._execute(
                 """
@@ -183,7 +197,7 @@ class OpenTargetsLoader(BaseLoader):
                     updated_at = SYSUTCDATETIME()
                 WHERE symbol = ? AND ensembl_gene_id IS NULL
                 """,
-                (ensembl_gene_id, uniprot_id, symbol),
+                (ensembl_gene_id, safe_uniprot, symbol),
             )
 
             # Also try by UniProt ID
