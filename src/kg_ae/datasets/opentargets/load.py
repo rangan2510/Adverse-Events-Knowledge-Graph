@@ -2,17 +2,35 @@
 Open Targets loader.
 
 Loads normalized Open Targets data into SQL Server graph tables.
+
+Performance notes (issue #3):
+- Reuses a single connection across all rows. The previous implementation
+  called ``self._execute(...)`` per row, which opens a new mssql_python
+  connection on every call -- on 450k+ associations this looked like a hang.
+- Preloads node-id lookups for kg.Gene and kg.Disease into in-memory dicts.
+- Inserts claims and edges in batches and uses ``OUTPUT INSERTED.$node_id``
+  to retrieve new claim node ids deterministically (the prior
+  ``ORDER BY claim_key DESC TOP 1`` trick was both slow and race-prone).
 """
 
+from __future__ import annotations
+
 import json
+from typing import Any
 
 import polars as pl
 from rich.console import Console
+from rich.progress import Progress
 from rich.table import Table
 
 from kg_ae.datasets.base import BaseLoader
+from kg_ae.db import get_connection
 
 console = Console()
+
+# Batch size for claim + edge inserts. 500 keeps each VALUES clause well under
+# SQL Server's 2100 parameter limit (we use ~5 params per claim row).
+ASSOCIATION_BATCH_SIZE = 500
 
 
 class OpenTargetsLoader(BaseLoader):
@@ -29,7 +47,7 @@ class OpenTargetsLoader(BaseLoader):
             Dict with counts of loaded entities
         """
         console.print("[bold cyan]Open Targets Loader[/]")
-        results = {}
+        results: dict[str, int] = {}
 
         # Register dataset
         dataset_id = self.ensure_dataset(
@@ -40,17 +58,20 @@ class OpenTargetsLoader(BaseLoader):
             source_url="https://platform.opentargets.org/",
         )
 
-        # Load diseases
-        disease_count = self._load_diseases(dataset_id)
-        results["diseases"] = disease_count
+        # All entity loads share one connection to avoid per-row connect overhead.
+        with get_connection() as conn:
+            cursor = conn.cursor()
 
-        # Update genes with Ensembl IDs
-        gene_update_count = self._update_genes(dataset_id)
-        results["genes_updated"] = gene_update_count
+            disease_count = self._load_diseases(cursor)
+            conn.commit()
+            results["diseases"] = disease_count
 
-        # Load gene-disease associations (claims + edges)
-        assoc_count = self._load_associations(dataset_id)
-        results["associations"] = assoc_count
+            gene_update_count = self._update_genes(cursor)
+            conn.commit()
+            results["genes_updated"] = gene_update_count
+
+            assoc_count = self._load_associations(cursor, conn, dataset_id)
+            results["associations"] = assoc_count
 
         # Summary table
         table = Table(title="Open Targets Load Summary", show_header=True)
@@ -62,64 +83,67 @@ class OpenTargetsLoader(BaseLoader):
 
         return results
 
-    def _load_diseases(self, dataset_id: int) -> int:
-        """
-        Load disease entities into kg.Disease table.
-        """
+    # ------------------------------------------------------------------
+    # Diseases
+    # ------------------------------------------------------------------
+    def _load_diseases(self, cursor: Any) -> int:
+        """Load disease entities into kg.Disease table."""
         diseases_path = self.silver_dir / "diseases.parquet"
         if not diseases_path.exists():
             console.print("  [dim][skip] No diseases.parquet found[/]")
             return 0
 
         df = pl.read_parquet(diseases_path)
+        total = len(df)
+        console.print(f"  Diseases input: {total:,} rows")
+
+        # Preload existing key sets so we avoid a round-trip per row.
+        cursor.execute("SELECT efo_id FROM kg.Disease WHERE efo_id IS NOT NULL")
+        existing_efo: set[str] = {r[0] for r in cursor.fetchall()}
+
+        cursor.execute("SELECT mondo_id FROM kg.Disease WHERE mondo_id IS NOT NULL")
+        existing_mondo: set[str] = {r[0] for r in cursor.fetchall()}
+
+        cursor.execute("SELECT doid FROM kg.Disease WHERE doid IS NOT NULL")
+        existing_doid: set[str] = {r[0] for r in cursor.fetchall()}
 
         count = 0
-        for row in df.iter_rows(named=True):
-            efo_id = row.get("efo_id")
-            label = row.get("label", "")
-            mondo_id = row.get("mondo_id") or None
-            doid = row.get("doid") or None
+        with Progress() as progress:
+            task = progress.add_task("[cyan]    Loading diseases", total=total)
 
-            if not efo_id or not label:
-                continue
+            for row in df.iter_rows(named=True):
+                progress.advance(task)
 
-            # Check if disease exists by EFO ID
-            existing = self._execute(
-                "SELECT disease_key FROM kg.Disease WHERE efo_id = ?",
-                (efo_id,),
-            )
-            if existing:
-                count += 1
-                continue
+                efo_id = row.get("efo_id")
+                label = row.get("label", "")
+                mondo_id = row.get("mondo_id") or None
+                doid = row.get("doid") or None
 
-            # Check by MONDO ID
-            if mondo_id:
-                existing = self._execute(
-                    "SELECT disease_key FROM kg.Disease WHERE mondo_id = ?",
-                    (mondo_id,),
-                )
-                if existing:
-                    # Update with EFO ID
-                    self._execute(
+                if not efo_id or not label:
+                    continue
+
+                if efo_id in existing_efo:
+                    count += 1
+                    continue
+
+                # Backfill EFO id onto an existing MONDO match.
+                if mondo_id and mondo_id in existing_mondo:
+                    cursor.execute(
                         """
                         UPDATE kg.Disease
                         SET efo_id = ?, updated_at = SYSUTCDATETIME()
                         WHERE mondo_id = ?
                         """,
-                        (efo_id, mondo_id),
+                        efo_id,
+                        mondo_id,
                     )
+                    existing_efo.add(efo_id)
                     count += 1
                     continue
 
-            # Check by DOID (multiple EFO IDs can map to same DOID)
-            if doid:
-                existing = self._execute(
-                    "SELECT disease_key FROM kg.Disease WHERE doid = ?",
-                    (doid,),
-                )
-                if existing:
-                    # Update with EFO ID if not already set
-                    self._execute(
+                # Backfill EFO/MONDO onto an existing DOID match.
+                if doid and doid in existing_doid:
+                    cursor.execute(
                         """
                         UPDATE kg.Disease
                         SET efo_id = COALESCE(efo_id, ?),
@@ -127,27 +151,46 @@ class OpenTargetsLoader(BaseLoader):
                             updated_at = SYSUTCDATETIME()
                         WHERE doid = ?
                         """,
-                        (efo_id, mondo_id, doid),
+                        efo_id,
+                        mondo_id,
+                        doid,
                     )
+                    existing_efo.add(efo_id)
+                    if mondo_id:
+                        existing_mondo.add(mondo_id)
                     count += 1
                     continue
 
-            # Insert new disease
-            self._execute(
-                """
-                INSERT INTO kg.Disease (efo_id, mondo_id, doid, label)
-                VALUES (?, ?, ?, ?)
-                """,
-                (efo_id, mondo_id, doid, label),
-            )
-            count += 1
+                # New disease.
+                cursor.execute(
+                    """
+                    INSERT INTO kg.Disease (efo_id, mondo_id, doid, label)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    efo_id,
+                    mondo_id,
+                    doid,
+                    label,
+                )
+                existing_efo.add(efo_id)
+                if mondo_id:
+                    existing_mondo.add(mondo_id)
+                if doid:
+                    existing_doid.add(doid)
+                count += 1
 
-        console.print(f"    [green]✓[/] Diseases: {count:,}")
+        console.print(f"    [green]done[/] Diseases: {count:,}")
         return count
 
-    def _update_genes(self, dataset_id: int) -> int:
+    # ------------------------------------------------------------------
+    # Genes
+    # ------------------------------------------------------------------
+    def _update_genes(self, cursor: Any) -> int:
         """
         Update existing genes with Ensembl IDs from Open Targets.
+
+        Open Targets does not introduce new genes; it enriches HGNC-loaded
+        genes with Ensembl ids and a UniProt id when one is not yet assigned.
         """
         genes_path = self.silver_dir / "genes.parquet"
         if not genes_path.exists():
@@ -155,74 +198,89 @@ class OpenTargetsLoader(BaseLoader):
             return 0
 
         df = pl.read_parquet(genes_path)
+        total = len(df)
+        console.print(f"  Genes input: {total:,} rows")
+
+        # Preload taken keys to skip duplicates without round-trips.
+        cursor.execute("SELECT ensembl_gene_id FROM kg.Gene WHERE ensembl_gene_id IS NOT NULL")
+        existing_ensembl: set[str] = {r[0] for r in cursor.fetchall()}
+
+        cursor.execute("SELECT uniprot_id FROM kg.Gene WHERE uniprot_id IS NOT NULL")
+        taken_uniprot: set[str] = {r[0] for r in cursor.fetchall()}
 
         count = 0
-        for row in df.iter_rows(named=True):
-            ensembl_gene_id = row.get("ensembl_gene_id")
-            symbol = row.get("symbol")
-            uniprot_id = row.get("uniprot_id")
+        with Progress() as progress:
+            task = progress.add_task("[cyan]    Updating genes", total=total)
 
-            if not ensembl_gene_id or not symbol:
-                continue
+            for row in df.iter_rows(named=True):
+                progress.advance(task)
 
-            # Check if this Ensembl ID already exists (avoid duplicate key)
-            existing_ensembl = self._execute(
-                "SELECT gene_key FROM kg.Gene WHERE ensembl_gene_id = ?",
-                (ensembl_gene_id,),
-            )
-            if existing_ensembl:
-                count += 1
-                continue
+                ensembl_gene_id = row.get("ensembl_gene_id")
+                symbol = row.get("symbol")
+                uniprot_id = row.get("uniprot_id")
 
-            # Only assign uniprot_id if it is not already taken by another gene.
-            # This mirrors the guard in hgnc/load.py and prevents violating
-            # the UX_Gene_UniP unique index when multiple Open Targets targets
-            # share the same UniProt accession, or when HGNC already assigned
-            # that accession to a different gene row.
-            safe_uniprot = None
-            if uniprot_id:
-                gene_with_same_uniprot = self._execute(
-                    "SELECT gene_key FROM kg.Gene WHERE uniprot_id = ?",
-                    (uniprot_id,),
-                )
-                if not gene_with_same_uniprot:
-                    safe_uniprot = uniprot_id
+                if not ensembl_gene_id or not symbol:
+                    continue
 
-            # Try to update existing gene by symbol
-            self._execute(
-                """
-                UPDATE kg.Gene
-                SET ensembl_gene_id = ?,
-                    uniprot_id = COALESCE(uniprot_id, ?),
-                    updated_at = SYSUTCDATETIME()
-                WHERE symbol = ? AND ensembl_gene_id IS NULL
-                """,
-                (ensembl_gene_id, safe_uniprot, symbol),
-            )
+                if ensembl_gene_id in existing_ensembl:
+                    count += 1
+                    continue
 
-            # Also try by UniProt ID
-            if uniprot_id:
-                self._execute(
+                # Only assign uniprot_id if it isn't already taken by another
+                # gene. Mirrors the guard in hgnc/load.py and prevents
+                # violating UX_Gene_UniP when multiple Open Targets targets
+                # share a UniProt accession.
+                safe_uniprot = uniprot_id if uniprot_id and uniprot_id not in taken_uniprot else None
+
+                cursor.execute(
                     """
                     UPDATE kg.Gene
                     SET ensembl_gene_id = ?,
-                        symbol = COALESCE(symbol, ?),
+                        uniprot_id = COALESCE(uniprot_id, ?),
                         updated_at = SYSUTCDATETIME()
-                    WHERE uniprot_id = ? AND ensembl_gene_id IS NULL
+                    WHERE symbol = ? AND ensembl_gene_id IS NULL
                     """,
-                    (ensembl_gene_id, symbol, uniprot_id),
+                    ensembl_gene_id,
+                    safe_uniprot,
+                    symbol,
                 )
 
-            count += 1
+                if uniprot_id and uniprot_id in taken_uniprot:
+                    cursor.execute(
+                        """
+                        UPDATE kg.Gene
+                        SET ensembl_gene_id = ?,
+                            symbol = COALESCE(symbol, ?),
+                            updated_at = SYSUTCDATETIME()
+                        WHERE uniprot_id = ? AND ensembl_gene_id IS NULL
+                        """,
+                        ensembl_gene_id,
+                        symbol,
+                        uniprot_id,
+                    )
 
-        console.print(f"    [green]✓[/] Genes updated: {count:,}")
+                existing_ensembl.add(ensembl_gene_id)
+                if safe_uniprot:
+                    taken_uniprot.add(safe_uniprot)
+                count += 1
+
+        console.print(f"    [green]done[/] Genes updated: {count:,}")
         return count
 
-    def _load_associations(self, dataset_id: int) -> int:
+    # ------------------------------------------------------------------
+    # Associations
+    # ------------------------------------------------------------------
+    def _load_associations(self, cursor: Any, conn: Any, dataset_id: int) -> int:
         """
         Load gene-disease associations as Claims with edges.
 
-        Creates GENE_DISEASE claims linking genes to diseases.
+        Strategy:
+          1. Preload Ensembl-id -> gene $node_id and EFO-id -> disease $node_id.
+          2. Filter the input dataframe to rows whose gene and disease are known.
+          3. Insert claims in batches with ``OUTPUT INSERTED.$node_id`` to get
+             the new claim node ids back in order.
+          4. Build matching HasClaim and ClaimDisease edge rows in a single
+             batched insert per edge type.
         """
         associations_path = self.silver_dir / "associations.parquet"
         if not associations_path.exists():
@@ -230,90 +288,111 @@ class OpenTargetsLoader(BaseLoader):
             return 0
 
         df = pl.read_parquet(associations_path)
+        total = len(df)
+        console.print(f"  Associations input: {total:,} rows")
 
-        count = 0
+        # Preload node-id lookups -- one query each, instead of two per row.
+        cursor.execute("SELECT ensembl_gene_id, $node_id FROM kg.Gene WHERE ensembl_gene_id IS NOT NULL")
+        gene_nodes: dict[str, str] = {r[0]: r[1] for r in cursor.fetchall()}
+        console.print(f"    Gene nodes available: {len(gene_nodes):,}")
+
+        cursor.execute("SELECT efo_id, $node_id FROM kg.Disease WHERE efo_id IS NOT NULL")
+        disease_nodes: dict[str, str] = {r[0]: r[1] for r in cursor.fetchall()}
+        console.print(f"    Disease nodes available: {len(disease_nodes):,}")
+
+        # Materialize input rows that have both endpoints, so we know the
+        # progress total up front.
+        valid_rows: list[tuple[str, str, float]] = []
         skipped_no_gene = 0
         skipped_no_disease = 0
 
         for row in df.iter_rows(named=True):
             ensembl_gene_id = row.get("ensembl_gene_id")
             efo_id = row.get("efo_id")
-            score = row.get("score", 0)
+            score = row.get("score") or 0.0
 
             if not ensembl_gene_id or not efo_id:
                 continue
-
-            # Get gene node by Ensembl ID or symbol
-            gene_result = self._execute(
-                """
-                SELECT $node_id AS node_id, gene_key 
-                FROM kg.Gene 
-                WHERE ensembl_gene_id = ?
-                """,
-                (ensembl_gene_id,),
-            )
-            if not gene_result:
+            if ensembl_gene_id not in gene_nodes:
                 skipped_no_gene += 1
                 continue
-            gene_node_id = gene_result[0][0]
-
-            # Get disease node
-            disease_result = self._execute(
-                "SELECT $node_id AS node_id FROM kg.Disease WHERE efo_id = ?",
-                (efo_id,),
-            )
-            if not disease_result:
+            if efo_id not in disease_nodes:
                 skipped_no_disease += 1
                 continue
-            disease_node_id = disease_result[0][0]
 
-            # Create claim
-            claim_meta = json.dumps(
-                {
-                    "score": score,
-                    "source": "opentargets",
-                }
-            )
-            self._execute(
-                """
-                INSERT INTO kg.Claim (claim_type, strength_score, dataset_id, meta_json)
-                VALUES ('GENE_DISEASE', ?, ?, ?)
-                """,
-                (score, dataset_id, claim_meta),
+            valid_rows.append((ensembl_gene_id, efo_id, float(score)))
+
+        console.print(f"    Valid associations to insert: {len(valid_rows):,}")
+
+        count = 0
+        with Progress() as progress:
+            task = progress.add_task(
+                "[cyan]    Loading associations",
+                total=len(valid_rows),
             )
 
-            # Get claim node
-            claim_result = self._execute(
-                """
-                SELECT TOP 1 $node_id AS node_id 
-                FROM kg.Claim 
-                WHERE claim_type = 'GENE_DISEASE' AND dataset_id = ?
-                ORDER BY claim_key DESC
-                """,
-                (dataset_id,),
-            )
-            claim_node_id = claim_result[0][0]
+            for batch_start in range(0, len(valid_rows), ASSOCIATION_BATCH_SIZE):
+                batch = valid_rows[batch_start : batch_start + ASSOCIATION_BATCH_SIZE]
 
-            # Create edges: Gene -> Claim -> Disease
-            self._execute(
-                """
-                INSERT INTO kg.HasClaim ($from_id, $to_id, role)
-                VALUES (?, ?, 'subject')
-                """,
-                (gene_node_id, claim_node_id),
-            )
+                # 1) Insert claims for the batch and capture their $node_ids
+                #    in insertion order. SQL Server preserves OUTPUT order
+                #    relative to the VALUES list when there is no ORDER BY.
+                claim_values_sql = ", ".join(["('GENE_DISEASE', ?, ?, ?)"] * len(batch))
+                claim_params: list[Any] = []
+                for _ensembl, _efo, score in batch:
+                    meta = json.dumps({"score": score, "source": "opentargets"})
+                    claim_params.extend([score, dataset_id, meta])
 
-            self._execute(
-                """
-                INSERT INTO kg.ClaimDisease ($from_id, $to_id, relation)
-                VALUES (?, ?, 'associated_with')
-                """,
-                (claim_node_id, disease_node_id),
-            )
+                cursor.execute(
+                    f"""
+                    INSERT INTO kg.Claim (claim_type, strength_score, dataset_id, meta_json)
+                    OUTPUT INSERTED.$node_id
+                    VALUES {claim_values_sql}
+                    """,
+                    *claim_params,
+                )
+                claim_node_ids = [r[0] for r in cursor.fetchall()]
 
-            count += 1
+                if len(claim_node_ids) != len(batch):
+                    raise RuntimeError(
+                        f"Open Targets loader: expected {len(batch)} claim node ids, "
+                        f"got {len(claim_node_ids)}"
+                    )
 
-        console.print(f"    [green]✓[/] Associations: {count:,}")
+                # 2) Build edge VALUES for the same batch.
+                has_claim_params: list[Any] = []
+                claim_disease_params: list[Any] = []
+                for (ensembl, efo, _score), claim_node_id in zip(batch, claim_node_ids, strict=True):
+                    gene_node_id = gene_nodes[ensembl]
+                    disease_node_id = disease_nodes[efo]
+                    has_claim_params.extend([gene_node_id, claim_node_id, "subject"])
+                    claim_disease_params.extend([claim_node_id, disease_node_id, "associated_with"])
+
+                has_claim_sql = ", ".join(["(?, ?, ?)"] * len(batch))
+                cursor.execute(
+                    f"""
+                    INSERT INTO kg.HasClaim ($from_id, $to_id, role)
+                    VALUES {has_claim_sql}
+                    """,
+                    *has_claim_params,
+                )
+
+                claim_disease_sql = ", ".join(["(?, ?, ?)"] * len(batch))
+                cursor.execute(
+                    f"""
+                    INSERT INTO kg.ClaimDisease ($from_id, $to_id, relation)
+                    VALUES {claim_disease_sql}
+                    """,
+                    *claim_disease_params,
+                )
+
+                # Commit per batch so a failure midway doesn't lose hours of work.
+                conn.commit()
+
+                count += len(batch)
+                progress.advance(task, advance=len(batch))
+
+        console.print(f"    [green]done[/] Associations: {count:,}")
         if skipped_no_gene > 0:
             console.print(f"    [yellow]Skipped[/]: {skipped_no_gene:,} rows - gene not found")
         if skipped_no_disease > 0:
