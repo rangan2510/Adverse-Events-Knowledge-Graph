@@ -10,10 +10,14 @@
 .git/
 .github/
 
-# Large data we do NOT ship; the image rebuilds the graph from data/silver/.
+# Large data we do NOT ship. The image uses the committed, max-compressed
+# graph archive (data/graph/graph.7z) and extracts it inside the image, so the
+# raw JSON and the upstream layers are not part of the build context.
 data/raw/
 data/bronze/
-data/graph/
+data/silver/
+data/graph/*.json
+data/graph/meta.json
 
 # Local env (secrets are passed at run time via --env-file / -e)
 .env

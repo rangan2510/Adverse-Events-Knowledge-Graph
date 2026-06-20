@@ -14,10 +14,10 @@ FROM python:3.14-slim AS base
 # uv: fast, reproducible installs from uv.lock
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# aria2 provides fast, multi-connection, resumable downloads (used by the ETL
-# downloaders when present; falls back to httpx otherwise).
+# aria2: fast, resumable downloads for the ETL (falls back to httpx otherwise).
+# p7zip: extract the committed, max-compressed knowledge-graph archive.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends aria2 \
+    && apt-get install -y --no-install-recommends aria2 p7zip-full \
     && rm -rf /var/lib/apt/lists/*
 
 ENV UV_LINK_MODE=copy \
@@ -33,14 +33,18 @@ COPY pyproject.toml uv.lock README.md ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-project --no-dev
 
-# 2. Copy the application source and the silver data, then install the project.
+# 2. Copy the application source and install the project.
 COPY src/ ./src/
-COPY data/silver/ ./data/silver/
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
-# 3. Build the JSON knowledge graph inside the image (-> /app/data/graph/*.json).
-RUN uv run kg-ae build-graph
+# 3. Unpack the pre-built JSON knowledge graph from the committed, max-compressed
+#    archive (data/graph/graph.7z, tracked via Git LFS). Run `git lfs pull`
+#    before building so the real archive (not the LFS pointer) is present.
+COPY data/graph/graph.7z ./data/graph/graph.7z
+RUN 7z x -y -o./data/graph ./data/graph/graph.7z \
+    && rm ./data/graph/graph.7z \
+    && test -f ./data/graph/nodes.json && test -f ./data/graph/edges.json
 
 # Run as a non-root user.
 RUN useradd --create-home --uid 1000 appuser && chown -R appuser:appuser /app
