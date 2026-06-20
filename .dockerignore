@@ -1,0 +1,23 @@
+# Keep the build context small and reproducible.
+# Only src/ + data/silver/ + project metadata are needed to build the image;
+# the JSON graph is generated inside the image by `kg-ae build-graph`.
+
+.venv/
+**/__pycache__/
+**/*.pyc
+.pytest_cache/
+.ruff_cache/
+.git/
+.github/
+
+# Large data we do NOT ship; the image rebuilds the graph from data/silver/.
+data/raw/
+data/bronze/
+data/graph/
+
+# Local env (secrets are passed at run time via --env-file / -e)
+.env
+
+# Editor / OS noise
+.vscode/
+*.log

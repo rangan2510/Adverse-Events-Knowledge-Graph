@@ -5,88 +5,28 @@ Downloads pathway data from Reactome.
 https://reactome.org/download-data
 """
 
-from datetime import datetime
+from kg_ae.datasets.base import BaseDownloader, DownloadSpec
 
-from rich.console import Console
-from rich.table import Table
-
-from kg_ae.datasets.base import BaseDownloader, DatasetMetadata
-
-console = Console()
+_BASE = "https://reactome.org/download/current"
 
 
 class ReactomeDownloader(BaseDownloader):
     """Download Reactome pathway data files."""
 
     source_key = "reactome"
-    base_url = "https://reactome.org/download/current"
+    base_url = _BASE
     license_name = "CC BY 4.0"
 
-    # Key files for gene-pathway relationships
+    # filename -> full URL
     FILES = {
-        # UniProt to pathway mapping (human)
-        "UniProt2Reactome.txt": {
-            "url": "https://reactome.org/download/current/UniProt2Reactome.txt",
-            "description": "UniProt protein to pathway mapping",
-        },
-        # Pathway hierarchy
-        "ReactomePathwaysRelation.txt": {
-            "url": "https://reactome.org/download/current/ReactomePathwaysRelation.txt",
-            "description": "Pathway parent-child relationships",
-        },
-        # Pathway names
-        "ReactomePathways.txt": {
-            "url": "https://reactome.org/download/current/ReactomePathways.txt",
-            "description": "Pathway IDs and names",
-        },
-        # Gene symbol mapping (alternative to UniProt)
-        "Ensembl2Reactome.txt": {
-            "url": "https://reactome.org/download/current/Ensembl2Reactome.txt",
-            "description": "Ensembl gene to pathway mapping",
-        },
+        "UniProt2Reactome.txt": f"{_BASE}/UniProt2Reactome.txt",
+        "ReactomePathwaysRelation.txt": f"{_BASE}/ReactomePathwaysRelation.txt",
+        "ReactomePathways.txt": f"{_BASE}/ReactomePathways.txt",
+        "Ensembl2Reactome.txt": f"{_BASE}/Ensembl2Reactome.txt",
     }
 
-    def download(self, force: bool = False) -> list[DatasetMetadata]:
-        """
-        Download Reactome data files.
-
-        Args:
-            force: Re-download even if files exist
-
-        Returns:
-            List of metadata for downloaded files
-        """
-        console.print("[bold cyan]Reactome Downloader[/]")
-        results = []
-
-        for filename, info in self.FILES.items():
-            dest = self.raw_dir / filename
-
-            if dest.exists() and not force:
-                console.print(f"  [dim][skip] {filename} (cached)[/]")
-                sha256 = self._compute_sha256(dest)
-            else:
-                console.print(f"  [yellow]Downloading[/] {filename}...")
-                self._fetch_url(info["url"], dest)
-                sha256 = self._compute_sha256(dest)
-                console.print(f"    [green]✓[/] {filename} ({dest.stat().st_size:,} bytes)")
-
-            results.append(
-                DatasetMetadata(
-                    source_key=self.source_key,
-                    version=None,  # Reactome uses "current" endpoint
-                    download_url=info["url"],
-                    local_path=dest,
-                    sha256=sha256,
-                    downloaded_at=datetime.now(),
-                    license_name=self.license_name,
-                )
-            )
-
-        # Summary table
-        table = Table(title="Reactome Download Summary", show_header=True)
-        table.add_column("File", style="cyan")
-        table.add_column("Status", justify="center")
-        for r in results:
-            table.add_row(r.local_path.name, "[green]✓[/]")
-        console.print(table)
+    def download_specs(self) -> list[DownloadSpec]:
+        return [
+            DownloadSpec(url=url, dest=self.raw_dir / filename, source=self.source_key)
+            for filename, url in self.FILES.items()
+        ]

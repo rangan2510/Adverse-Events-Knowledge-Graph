@@ -33,16 +33,25 @@ class ClinGenDownloader(BaseDownloader):
         self.raw_dir = settings.raw_dir / self.source_key
         self.raw_dir.mkdir(parents=True, exist_ok=True)
 
-    def download(self) -> dict[str, Path]:
+    def download(self, force: bool = False) -> dict[str, Path]:
         """
         Download ClinGen gene-disease validity curations.
 
         Uses the ClinGen public API to fetch all curations.
 
+        Args:
+            force: Re-download even if a cached file exists.
+
         Returns:
             Dict mapping file types to paths
         """
         console.print("[bold cyan]ClinGen Downloader[/]")
+
+        # Skip if already cached (idempotent re-runs).
+        cached = self.raw_dir / "gene_validity.tsv"
+        if cached.exists() and not force:
+            console.print(f"  [dim][skip] {cached.name} (cached)[/]")
+            return {"validity": cached}
 
         downloaded = {}
 

@@ -1,17 +1,19 @@
 """
 Adverse event tools.
 
-Get known adverse events for drugs from SIDER/labels.
+Get known adverse events for drugs (SIDER labels), FDA label sections
+(openFDA), and FAERS disproportionality signals. Backed by the GraphStore.
 """
 
 from dataclasses import dataclass
 
-from kg_ae.db import execute
+from kg_ae.graph import get_store
 
 
 @dataclass
 class DrugAdverseEvent:
     """Drug-adverse event association."""
+
     drug_key: int
     drug_name: str
     ae_key: int
@@ -26,125 +28,57 @@ def get_drug_adverse_events(
     min_frequency: float | None = None,
     limit: int = 100,
 ) -> list[DrugAdverseEvent]:
-    """
-    Get adverse events for a drug.
-
-    Args:
-        drug_key: The drug's primary key
-        min_frequency: Minimum frequency threshold (0-1), None for all
-        limit: Maximum number of results
-
-    Returns:
-        List of DrugAdverseEvent sorted by frequency descending
-    """
-    if min_frequency is not None:
-        rows = execute(
-            f"""
-            SELECT TOP {limit}
-                d.drug_key, d.preferred_name,
-                ae.ae_key, ae.ae_label,
-                MAX(cae.frequency) AS frequency,
-                MIN(cae.relation)  AS relation
-            FROM kg.Drug d
-                , kg.HasClaim hc
-                , kg.Claim c
-                , kg.ClaimAdverseEvent cae
-                , kg.AdverseEvent ae
-            WHERE MATCH(d-(hc)->c-(cae)->ae)
-              AND d.drug_key = ?
-              AND (cae.frequency IS NULL OR cae.frequency >= ?)
-            GROUP BY d.drug_key, d.preferred_name,
-                     ae.ae_key, ae.ae_label
-            ORDER BY frequency DESC
-            """,
-            (drug_key, min_frequency),
-            commit=False,
-        )
-    else:
-        rows = execute(
-            f"""
-            SELECT TOP {limit}
-                d.drug_key, d.preferred_name,
-                ae.ae_key, ae.ae_label,
-                MAX(cae.frequency) AS frequency,
-                MIN(cae.relation)  AS relation
-            FROM kg.Drug d
-                , kg.HasClaim hc
-                , kg.Claim c
-                , kg.ClaimAdverseEvent cae
-                , kg.AdverseEvent ae
-            WHERE MATCH(d-(hc)->c-(cae)->ae)
-              AND d.drug_key = ?
-            GROUP BY d.drug_key, d.preferred_name,
-                     ae.ae_key, ae.ae_label
-            ORDER BY frequency DESC
-            """,
-            (drug_key,),
-            commit=False,
-        )
-
-    return [
-        DrugAdverseEvent(
-            drug_key=row[0],
-            drug_name=row[1],
-            ae_key=row[2],
-            ae_label=row[3],
-            frequency=row[4],
-            relation=row[5],
-        )
-        for row in rows
-    ]
+    """Get adverse events for a drug, sorted by frequency descending."""
+    store = get_store()
+    drug_name = store.node_label("Drug", drug_key)
+    by_ae: dict[int, DrugAdverseEvent] = {}
+    for e in store.out_edges("Drug", drug_key, dst_type="AdverseEvent"):
+        freq = e.frequency
+        if min_frequency is not None and (freq is None or freq < min_frequency):
+            continue
+        existing = by_ae.get(e.dst_key)
+        if existing is None or (freq or 0) > (existing.frequency or 0):
+            by_ae[e.dst_key] = DrugAdverseEvent(
+                drug_key=drug_key,
+                drug_name=drug_name,
+                ae_key=e.dst_key,
+                ae_label=store.node_label("AdverseEvent", e.dst_key),
+                frequency=freq,
+                relation=e.relation,
+                dataset=e.dataset,
+            )
+    results = sorted(by_ae.values(), key=lambda a: a.frequency or 0, reverse=True)
+    return results[:limit]
 
 
 def get_drug_profile(drug_key: int) -> dict:
-    """
-    Get complete profile for a drug: basic info, targets, and top AEs.
-
-    Args:
-        drug_key: The drug's primary key
-
-    Returns:
-        Dict with drug info, targets, and adverse_events
-    """
+    """Get complete profile for a drug: basic info, targets, and top AEs."""
     from kg_ae.tools.mechanism import get_drug_targets
 
-    # Get drug info
-    rows = execute(
-        """
-        SELECT drug_key, preferred_name, drugcentral_id, chembl_id
-        FROM kg.Drug
-        WHERE drug_key = ?
-        """,
-        (drug_key,),
-        commit=False,
-    )
-    if not rows:
+    store = get_store()
+    props = store.get_node("Drug", drug_key)
+    if props is None:
         return {"error": f"Drug {drug_key} not found"}
 
-    row = rows[0]
     drug_info = {
-        "drug_key": row[0],
-        "preferred_name": row[1],
-        "drugcentral_id": row[2],
-        "chembl_id": row[3],
+        "drug_key": drug_key,
+        "preferred_name": props.get("preferred_name"),
+        "drugcentral_id": props.get("drugcentral_id"),
+        "chembl_id": props.get("chembl_id"),
     }
-
     targets = get_drug_targets(drug_key)
     aes = get_drug_adverse_events(drug_key, limit=20)
-
     return {
         "drug": drug_info,
         "targets": [{"gene_key": t.gene_key, "symbol": t.gene_symbol} for t in targets],
-        "adverse_events": [
-            {"ae_key": ae.ae_key, "label": ae.ae_label, "frequency": ae.frequency}
-            for ae in aes
-        ],
+        "adverse_events": [{"ae_key": ae.ae_key, "label": ae.ae_label, "frequency": ae.frequency} for ae in aes],
     }
 
 
 @dataclass
 class DrugLabelSection:
     """Drug label section content."""
+
     drug_key: int
     drug_name: str
     section_name: str
@@ -156,6 +90,7 @@ class DrugLabelSection:
 @dataclass
 class FAERSSignal:
     """FAERS disproportionality signal for a drug-AE pair."""
+
     drug_key: int
     drug_name: str
     ae_key: int
@@ -166,73 +101,78 @@ class FAERSSignal:
     count: int = 0  # Number of reports
 
 
+@dataclass
+class DrugDrugInteraction:
+    """A drug-drug interaction adverse event (TWOSIDES)."""
+
+    drug_a_key: int
+    drug_b_key: int
+    ae_key: int
+    ae_label: str
+    prr: float | None = None
+    report_count: int | None = None
+    dataset: str | None = None
+
+
+def get_drug_drug_interactions(drug_a_key: int, drug_b_key: int, limit: int = 50) -> list[DrugDrugInteraction]:
+    """Get adverse events reported for the combination of two drugs (TWOSIDES).
+
+    Traverses Drug -> DrugCombination -> AdverseEvent: finds combination nodes
+    that both drugs belong to, then the AEs of those combinations.
+    """
+    store = get_store()
+    # Combinations drug A belongs to.
+    a_combos = {e.dst_key for e in store.out_edges("Drug", drug_a_key, dst_type="DrugCombination")}
+    if not a_combos:
+        return []
+    b_combos = {e.dst_key for e in store.out_edges("Drug", drug_b_key, dst_type="DrugCombination")}
+    shared = a_combos & b_combos
+    results: list[DrugDrugInteraction] = []
+    for ckey in shared:
+        for e in store.out_edges("DrugCombination", ckey, dst_type="AdverseEvent"):
+            results.append(
+                DrugDrugInteraction(
+                    drug_a_key=drug_a_key,
+                    drug_b_key=drug_b_key,
+                    ae_key=e.dst_key,
+                    ae_label=store.node_label("AdverseEvent", e.dst_key),
+                    prr=e.meta.get("prr") if e.meta else e.strength_score,
+                    report_count=e.meta.get("report_count") if e.meta else None,
+                    dataset=e.dataset,
+                )
+            )
+    results.sort(key=lambda x: x.prr or 0, reverse=True)
+    return results[:limit]
+
+
 def get_drug_label_sections(
     drug_key: int,
     sections: list[str] | None = None,
 ) -> list[DrugLabelSection]:
+    """Get FDA label sections for a drug (claim_type DRUG_LABEL, openFDA).
+
+    Label content is stored in the edge's evidence payload. Returns an empty
+    list when no DRUG_LABEL claims are present in the graph.
     """
-    Get FDA label sections for a drug.
-
-    Available sections vary by drug but commonly include:
-    - adverse_reactions
-    - warnings
-    - contraindications
-    - drug_interactions
-    - boxed_warning
-
-    Args:
-        drug_key: The drug's primary key
-        sections: List of section names to retrieve, or None for all available
-
-    Returns:
-        List of DrugLabelSection with content for each available section
-    """
-    import json
-
-    # Get claims with DRUG_LABEL type for this drug
-    rows = execute(
-        """
-        SELECT 
-            d.drug_key, d.preferred_name,
-            c.statement_json,
-            e.payload_json
-        FROM kg.Drug d
-            , kg.HasClaim hc
-            , kg.Claim c
-            , kg.SupportedBy sb
-            , kg.Evidence e
-        WHERE MATCH(d-(hc)->c-(sb)->e)
-          AND d.drug_key = ?
-          AND c.claim_type = 'DRUG_LABEL'
-          AND e.payload_json IS NOT NULL
-        """,
-        (drug_key,),
-        commit=False,
-    )
-
-    results = []
-    for row in rows:
-        drug_name = row[1]
-        statement = json.loads(row[2]) if row[2] else {}
-        payload = json.loads(row[3]) if row[3] else {}
-
-        effective_date = statement.get("effective_date")
-        brand_name = statement.get("brand_name")
-
-        # Extract requested sections from payload
-        for section_name, content in payload.items():
-            if sections is None or section_name in sections:
-                results.append(
-                    DrugLabelSection(
-                        drug_key=drug_key,
-                        drug_name=drug_name,
-                        section_name=section_name,
-                        content=content,
-                        effective_date=effective_date,
-                        brand_name=brand_name,
+    store = get_store()
+    drug_name = store.node_label("Drug", drug_key)
+    results: list[DrugLabelSection] = []
+    for e in store.out_edges("Drug", drug_key, claim_type="DRUG_LABEL"):
+        statement = e.statement or {}
+        for ev in e.evidence:
+            payload = ev.get("payload") or {}
+            for section_name, content in payload.items():
+                if sections is None or section_name in sections:
+                    results.append(
+                        DrugLabelSection(
+                            drug_key=drug_key,
+                            drug_name=drug_name,
+                            section_name=section_name,
+                            content=str(content),
+                            effective_date=statement.get("effective_date"),
+                            brand_name=statement.get("brand_name"),
+                        )
                     )
-                )
-
     return results
 
 
@@ -242,71 +182,33 @@ def get_drug_faers_signals(
     min_count: int = 1,
     min_prr: float | None = None,
 ) -> list[FAERSSignal]:
+    """Get FAERS disproportionality signals for a drug (claim_type DRUG_AE_FAERS).
+
+    Returns drug-AE pairs with PRR, ROR, chi-squared sourced from the edge meta.
+    Returns an empty list when no FAERS claims are present in the graph.
     """
-    Get FAERS disproportionality signals for a drug.
-
-    Returns drug-AE pairs with PRR, ROR, chi-squared from FAERS data.
-
-    Args:
-        drug_key: The drug's primary key
-        top_k: Maximum number of signals to return
-        min_count: Minimum report count threshold
-        min_prr: Minimum PRR threshold (optional)
-
-    Returns:
-        List of FAERSSignal sorted by PRR descending
-    """
-    import json
-
-    # Query FAERS claims for this drug
-    rows = execute(
-        f"""
-        SELECT TOP {top_k}
-            d.drug_key, d.preferred_name,
-            ae.ae_key, ae.ae_label,
-            c.meta_json
-        FROM kg.Drug d
-            , kg.HasClaim hc
-            , kg.Claim c
-            , kg.ClaimAdverseEvent cae
-            , kg.AdverseEvent ae
-        WHERE MATCH(d-(hc)->c-(cae)->ae)
-          AND d.drug_key = ?
-          AND c.claim_type = 'DRUG_AE_FAERS'
-        ORDER BY c.strength_score DESC
-        """,
-        (drug_key,),
-        commit=False,
-    )
-
-    results = []
-    for row in rows:
-        meta = json.loads(row[4]) if row[4] else {}
-
+    store = get_store()
+    drug_name = store.node_label("Drug", drug_key)
+    results: list[FAERSSignal] = []
+    for e in store.out_edges("Drug", drug_key, dst_type="AdverseEvent", claim_type="DRUG_AE_FAERS"):
+        meta = e.meta or {}
+        count = int(meta.get("count", 0) or 0)
         prr = meta.get("prr")
-        ror = meta.get("ror")
-        chi2 = meta.get("chi2")
-        count = meta.get("count", 0)
-
-        # Apply filters
         if count < min_count:
             continue
         if min_prr is not None and (prr is None or prr < min_prr):
             continue
-
         results.append(
             FAERSSignal(
-                drug_key=row[0],
-                drug_name=row[1],
-                ae_key=row[2],
-                ae_label=row[3],
+                drug_key=drug_key,
+                drug_name=drug_name,
+                ae_key=e.dst_key,
+                ae_label=store.node_label("AdverseEvent", e.dst_key),
                 prr=prr,
-                ror=ror,
-                chi2=chi2,
+                ror=meta.get("ror"),
+                chi2=meta.get("chi2"),
                 count=count,
             )
         )
-
-    # Sort by PRR descending
     results.sort(key=lambda x: x.prr or 0, reverse=True)
-    return results
+    return results[:top_k]

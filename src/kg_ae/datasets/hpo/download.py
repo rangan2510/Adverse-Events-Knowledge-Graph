@@ -39,9 +39,12 @@ class HPODownloader(BaseDownloader):
         self.raw_dir = settings.raw_dir / self.source_key
         self.raw_dir.mkdir(parents=True, exist_ok=True)
 
-    def download(self) -> dict[str, Path]:
+    def download(self, force: bool = False) -> dict[str, Path]:
         """
         Download HPO annotation files.
+
+        Args:
+            force: Re-download even if a cached file exists.
 
         Returns:
             Dict mapping file types to paths
@@ -53,6 +56,11 @@ class HPODownloader(BaseDownloader):
         for key, filename in self.FILES.items():
             url = f"{self.BASE_URL}/{filename}"
             output_path = self.raw_dir / filename
+
+            if output_path.exists() and not force:
+                console.print(f"  [dim][skip] {filename} (cached)[/]")
+                downloaded[key] = output_path
+                continue
 
             console.print(f"  Downloading {filename}...")
 

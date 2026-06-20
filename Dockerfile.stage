@@ -1,0 +1,47 @@
+# Drug-AE Knowledge Graph - STAGING image (online).
+#
+# This image runs the staging pipeline (download -> normalize -> build -> verify)
+# to PRODUCE the JSON graph artifact. It has network access and pulls the large
+# public reference downloads. The artifact (data/graph/*.json) is written to a
+# mounted volume and then baked into the airgapped runtime image (Dockerfile).
+#
+# Run:
+#   docker compose --profile stage run --rm stage          # full pipeline
+#   docker compose --profile stage run --rm stage stage build   # single step
+
+FROM python:3.14-slim AS stage
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# aria2 provides fast, multi-connection, resumable downloads for the large
+# public reference files pulled during staging.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends aria2 \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1 \
+    UV_PYTHON_DOWNLOADS=never \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+WORKDIR /app
+
+# Dependencies (cached on lockfile).
+COPY pyproject.toml uv.lock README.md ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-install-project --no-dev
+
+# Source + existing silver (so a build-only run works without re-downloading).
+COPY src/ ./src/
+COPY scripts/ ./scripts/
+COPY schemas/ ./schemas/
+COPY data/silver/ ./data/silver/
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
+
+ENV PATH="/app/.venv/bin:${PATH}"
+
+# Default: run the whole staging pipeline. Override with e.g. `stage build`.
+ENTRYPOINT ["kg-ae"]
+CMD ["stage", "all"]

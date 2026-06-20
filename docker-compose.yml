@@ -1,0 +1,38 @@
+# Drug-AE Knowledge Graph - Option A (OpenRouter default).
+#
+# Usage:
+#   docker compose build
+#   docker compose run --rm kg-ae query "What does atorvastatin target?"
+#   docker compose run --rm kg-ae                       # interactive prompt
+#   docker compose run --rm kg-ae doctor                # show LLM/compliance posture
+#
+# Secrets and config come from .env (copy .env.example -> .env first).
+#
+# Airgapped deployment (built later): add an `ollama` service serving a local
+# model and set KG_AE_LLM_BASE_URL=http://ollama:11434/v1 + KG_AE_AIRGAPPED=true.
+
+services:
+  kg-ae:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: kg-ae:latest
+    env_file:
+      - .env
+    # Stream rich output to the console and keep stdin open for interactive mode.
+    stdin_open: true
+    tty: true
+
+  # Staging image (online): produces data/graph/*.json into the mounted ./data.
+  # Run with the `stage` profile so it does not start during normal use:
+  #   docker compose --profile stage run --rm stage              # full pipeline
+  #   docker compose --profile stage run --rm stage stage build  # single step
+  stage:
+    build:
+      context: .
+      dockerfile: Dockerfile.stage
+    image: kg-ae-stage:latest
+    profiles: ["stage"]
+    volumes:
+      - ./data:/app/data
+    tty: true

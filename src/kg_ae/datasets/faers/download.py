@@ -30,11 +30,12 @@ class FAERSDownloader(BaseDownloader):
         self.raw_dir = settings.raw_dir / self.source_key
         self.raw_dir.mkdir(parents=True, exist_ok=True)
 
-    def download(self, max_partitions: int = 10) -> dict[str, Path]:
+    def download(self, force: bool = False, max_partitions: int = 10) -> dict[str, Path]:
         """
         Download FAERS quarterly data files.
 
         Args:
+            force: Re-download even if a cached file exists.
             max_partitions: Maximum number of quarterly files to download
 
         Returns:
@@ -78,7 +79,7 @@ class FAERSDownloader(BaseDownloader):
             output_path = self.raw_dir / file_name
 
             # Skip if already downloaded
-            if output_path.exists():
+            if output_path.exists() and not force:
                 console.print(f"  [{i + 1}/{len(partitions)}] {file_name} (cached)")
                 downloaded[file_name] = output_path
                 continue

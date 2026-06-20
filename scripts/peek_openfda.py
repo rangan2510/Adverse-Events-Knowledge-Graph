@@ -1,4 +1,5 @@
 """Inspect openFDA download manifest."""
+
 import json
 
 with open("data/raw/openfda/download.json") as f:

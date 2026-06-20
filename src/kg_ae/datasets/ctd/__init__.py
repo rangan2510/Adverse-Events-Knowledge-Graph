@@ -1,7 +1,7 @@
 """CTD (Comparative Toxicogenomics Database) dataset module."""
 
 from .download import CTDDownloader
-from .load import CTDLoader
+from .normalize import CtdNormalizer
 from .parse import CTDParser
 
-__all__ = ["CTDDownloader", "CTDParser", "CTDLoader"]
+__all__ = ["CTDDownloader", "CTDParser", "CtdNormalizer"]

@@ -44,6 +44,13 @@ data/bronze/
 data/silver/
 data/gold/
 
+# Knowledge graph: the raw JSON is huge (~1.7 GB) and rebuildable; we commit
+# only the max-compressed archive (data/graph/graph.7z, tracked via Git LFS).
+data/graph/*.json
+
+# Transient experiment artifacts
+model_comparison.json
+
 # External tools (llama.cpp, model conversions)
 external/
 

@@ -34,17 +34,25 @@ class ChEMBLDownloader(BaseDownloader):
         self.raw_dir = settings.raw_dir / self.source_key
         self.raw_dir.mkdir(parents=True, exist_ok=True)
 
-    def download(self, max_records: int = 500000) -> dict[str, Path]:
+    def download(self, force: bool = False, max_records: int = 500000) -> dict[str, Path]:
         """
         Download ChEMBL activities via API.
 
         Args:
+            force: Re-download even if cached files exist.
             max_records: Maximum number of activity records to fetch
 
         Returns:
             Dict mapping file types to paths
         """
         console.print("[bold cyan]ChEMBL Downloader[/]")
+
+        # Skip if already cached (idempotent re-runs).
+        activities_cached = self.raw_dir / "activities.jsonl"
+        drugs_cached = self.raw_dir / "approved_drugs.json"
+        if activities_cached.exists() and drugs_cached.exists() and not force:
+            console.print("  [dim][skip] activities.jsonl, approved_drugs.json (cached)[/]")
+            return {"activities": activities_cached, "approved_drugs": drugs_cached}
 
         downloaded = {}
 

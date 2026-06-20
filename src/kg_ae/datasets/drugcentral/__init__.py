@@ -11,7 +11,6 @@ Key files:
 """
 
 from kg_ae.datasets.drugcentral.download import DrugCentralDownloader
-from kg_ae.datasets.drugcentral.load import DrugCentralLoader
 from kg_ae.datasets.drugcentral.normalize import DrugCentralNormalizer
 from kg_ae.datasets.drugcentral.parse import DrugCentralParser
 
@@ -19,5 +18,4 @@ __all__ = [
     "DrugCentralDownloader",
     "DrugCentralParser",
     "DrugCentralNormalizer",
-    "DrugCentralLoader",
 ]

@@ -84,6 +84,7 @@ class GtoPdbParser(BaseParser):
             infer_schema_length=5000,
             truncate_ragged_lines=True,
             quote_char='"',
+            ignore_errors=True,
         )
 
     def _parse_ligands(self) -> Path | None:

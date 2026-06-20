@@ -1,170 +1,136 @@
-# Copilot Instructions for Drug-AE Knowledge Graph Project
+# Drug-AE Knowledge Graph — Agent Instructions
 
-## Project Overview
+Pharmacovigilance KG that traces `Drug -> Gene -> Pathway -> Disease -> Adverse Event` using deterministic graph tools. The LLM is the **controller**; it never invents edges. Every association comes from a curated source with full provenance.
 
-This is a **pharmacovigilance knowledge graph** system that identifies potential drug-adverse event (AE) relationships through mechanistic pathways. Given a drug list and patient conditions, it returns evidence-backed networks:
+For project background, architecture diagrams, and graph stats, read [README.md](../README.md) first.
 
-```
-Drug → Gene/Protein → Pathway → Disease/Condition → Adverse Event
-```
+## What this codebase does
 
-### Core Constraints
-- **Local-first, pure Python** — no live web retrieval at runtime
-- **SQL Server 2025** backend using graph tables (`AS NODE`/`AS EDGE`), JSON columns, and `VECTOR(1536)` embeddings
-- **LLM (llama.cpp) is the orchestrator, NOT the reasoner** — it can only call tools and summarize graph outputs; it never invents edges
+The goal is mechanistic, hallucination-resistant answers to pharmacovigilance questions (e.g. "why might drug X cause adverse event Y?", "what AEs do these drugs share?"). It works in two halves:
 
-## Architecture
+1. **ETL builds the graph** (offline, may use the internet on a staging machine). Curated biomedical sources (DrugCentral, ChEMBL, Reactome, Open Targets, SIDER, FAERS, HGNC, etc.) are downloaded, parsed to Parquet (bronze), and normalized to canonical IDs (silver). Then `kg-ae build-graph` reads the silver Parquet and emits a **file-based JSON graph** under `data/graph/` (`nodes.json`, `edges.json`, `meta.json`). Associations are flattened entity-to-entity edges that still carry their claim payload (`dataset`, `source_record_id`, normalized `strength_score`, raw `meta`, and an `evidence` list), so every edge keeps full provenance.
+2. **The agent answers questions** (online or airgapped). A LangChain/LangGraph ReAct agent reasons about what it needs, calls a fixed set of deterministic graph tools (`src/kg_ae/tools/`), the tools query an in-memory `GraphStore` loaded from the JSON files, and the LLM narrates only what the tools returned. Because the LLM reaches the graph *only* through these tools, it cannot fabricate drug targets, pathways, or citations.
 
-### Data Flow (Bronze → Silver → Gold)
-```
-data/raw/       → Downloaded archives (JSON, TSV, dumps)
-data/bronze/    → Parsed to Parquet/CSV (source-shaped)
-data/silver/    → Normalized tables (canonical IDs applied)
-data/gold/      → Graph-ready edge tables + evidence
-```
+Think of the LLM as a router over a trusted local graph, not a knowledge source. There is **no database server**: the runtime is pure files plus one OpenAI-compatible LLM endpoint.
 
-### Planned Python Package Layout
+## Deployment context (read this)
+
+This is built for an EU hospital and is designed to run **airgapped**. The graph contains only public reference data (no patient data); the only patient-adjacent input is the query text. Two capabilities touch the network and are gated by one flag:
+
+- **LLM**: a single OpenAI-compatible endpoint. Dev uses OpenRouter (a stand-in for the local model); deployment uses a local server (Ollama / LM Studio / vLLM) on localhost. Switch by changing `KG_AE_LLM_BASE_URL` + `KG_AE_LLM_MODEL` only.
+- **Web search (Tavily)**: an *optional, scoped* tool for entity resolution/verification only. It is never load-bearing and never a citation source.
+
+When `KG_AE_AIRGAPPED=true`, `build_chat_model()` refuses any non-localhost LLM URL and the Tavily tool is not registered. See [docs/compliance.md](../docs/compliance.md). Only open-source models are allowed (Mistral Small recommended for France; Gemma also fine).
+
+## Hard rules (read before writing code)
+
+- **Local-first, pure Python.** No live web retrieval at runtime except the optional, airgap-gated Tavily tool. ETL downloads are the only other network use.
+- **Never have the LLM reason over data it didn't get from a tool.** Tools return structured dataclasses, not prose. The agent only summarizes tool outputs.
+- **Every edge must carry provenance**: `dataset`, `source_record_id`, normalized `strength_score`, and `meta`/`evidence` for raw fields. The graph builder (`src/kg_ae/graph/build.py`) attaches these to every edge it emits.
+- **Do not use emojis** anywhere — code, comments, docstrings, docs, or terminal output. (Existing scripts use plain text status markers like `[ok]`, `[!]`, `[>]`.)
+- **PowerShell escapes with backticks (`` ` ``), not backslashes.** All commands and scripts assume Windows 11 + PowerShell 7.
+- **Only open-source LLMs.** No proprietary models in any config or default.
+
+## Toolchain (non-negotiable choices)
+
+| Concern | Tool | Why it matters |
+|---------|------|----------------|
+| Package management | `uv` | All commands prefixed with `uv run ...`. Never use `pip` or `python -m pip`. |
+| Linting | `ruff` (configured in [pyproject.toml](../pyproject.toml)) | Line length 120, target py312, rules `E,F,I,UP,B,SIM`. |
+| Knowledge graph | file-based JSON (`data/graph/`) loaded by `GraphStore` | **No database server.** See [src/kg_ae/graph/store.py](../src/kg_ae/graph/store.py). |
+| Terminal output | `rich` | Use `Console`, `Panel`, `Table`, `Progress` — see [src/kg_ae/etl/runner.py](../src/kg_ae/etl/runner.py) for the canonical pattern. |
+| Data frames | `polars` | Not pandas. All bronze/silver files are Parquet. |
+| LLM / agent | `langchain` + `langgraph` + `langchain-openai` | One OpenAI-compatible `ChatOpenAI` client; `create_react_agent`. See [src/kg_ae/llm/agent.py](../src/kg_ae/llm/agent.py). |
+| Web search (optional) | `langchain-tavily` | Scoped, airgap-gated entity-resolution tool only. |
+
+## Repository layout (actual, not aspirational)
+
 ```
 src/kg_ae/
-  datasets/     # One module per data source (download, parse, normalize)
-  resolve/      # Entity resolution: drug/gene/disease/ae identity
-  etl/          # Pipelines + checkpoints
-  graph/        # SQL graph loaders + traversal queries
-  evidence/     # Scoring + provenance
-  tools/        # LLM tool functions (thin wrappers over graph/queries)
+  cli.py              Typer CLI entry point (kg-ae command)
+  config.py           Pydantic-settings, KG_AE_* env vars, .env loading, airgap/compliance helpers
+  datasets/<name>/    download.py + parse.py + (normalize.py) per source
+    base.py           BaseDownloader / BaseParser / BaseNormalizer ABCs (BaseLoader is legacy)
+  graph/store.py      GraphStore: in-memory JSON graph + get_store()
+  graph/build.py      build_graph(): silver Parquet -> data/graph/*.json
+  etl/runner.py       Live-dashboard ETL runner (download/parse/normalize; no SQL load)
+  llm/llm_client.py   Single OpenAI-compatible ChatOpenAI factory + airgap guard
+  llm/lc_tools.py     LangChain @tool wrappers (graph tools + optional Tavily)
+  llm/agent.py        LangGraph create_react_agent + self-consistency ensemble
+  tools/              Deterministic graph query tools (GraphStore-backed)
+  db/                 DEPRECATED shim: imports succeed, calls raise (legacy load.py only)
+
+scripts/              query_react.py (agent), graph_stats.py, peek_openfda.py
+tests/                Pytest suite. Tool tests run against the built JSON graph (see conftest.py)
+data/{raw,bronze,silver}/<source>/   Bronze->Parquet, Silver->canonical IDs applied
+data/graph/           Built JSON graph (nodes.json, edges.json, meta.json)
+docs/                 Linked from README; docs/compliance.md is the airgap source of truth
 ```
 
-### Key Design Patterns
+## Data flow: Bronze -> Silver -> JSON graph
 
-1. **Claim-Evidence Pattern**: Associations are first-class `Claim` nodes with edges to `Evidence` nodes for full provenance tracking
+1. `BaseDownloader.download()` -> `data/raw/<source>/` with SHA256 + retry logic.
+2. `BaseParser.parse()` -> `data/bronze/<source>/*.parquet` (source-shaped).
+3. `BaseNormalizer.normalize()` (optional) -> `data/silver/<source>/*.parquet` with canonical IDs joined.
+4. `kg-ae build-graph` (`src/kg_ae/graph/build.py`) reads silver Parquet and emits `data/graph/{nodes,edges,meta}.json`. There is **no SQL load step** anymore.
 
-2. **Canonical ID Strategy** (see [milestones.md](.github/copilot-planning/milestones.md#2-canonical-id-strategy-this-makes-or-breaks-the-project)):
-   - Drug: `drug_key` (internal) + DrugCentral ID, ChEMBL ID, PubChem CID, InChIKey
-   - Gene: `gene_key` + HGNC ID (canonical), Ensembl, UniProt
-   - Disease: `disease_key` + MONDO ID (canonical), DOID, EFO
-   - Pathway: `pathway_key` + Reactome ID, WikiPathways ID
-   - Adverse Event: `ae_key` + label (strings from openFDA/SIDER), optional OAE mapping
+When adding a new dataset: add `download.py`/`parse.py`/`normalize.py` like [src/kg_ae/datasets/sider/](../src/kg_ae/datasets/sider/), register it in `DATASETS` + `EXECUTION_ORDER` in [src/kg_ae/etl/runner.py](../src/kg_ae/etl/runner.py), then teach `GraphBuilder` (in `graph/build.py`) how to turn its silver tables into nodes/edges.
 
-3. **Every edge carries provenance**:
-   - `source` (dataset + version)
-   - `evidence_ids` (one-to-many link to Evidence nodes)
-   - `score` (normalized 0–1)
-   - `meta_json` (raw fields preserved)
+## Graph model essentials
 
-## SQL Server 2025 Schema
+- The graph is JSON, loaded by `GraphStore` ([src/kg_ae/graph/store.py](../src/kg_ae/graph/store.py)). Node types: `Drug`, `Gene`, `Pathway`, `Disease`, `AdverseEvent`.
+- **Flattened claim-evidence**: each edge is an entity->entity link carrying its claim payload (`claim_type`, `strength_score`, `frequency`, `relation`, `effect`, `polarity`, `dataset`, `meta`) plus an `evidence` list. This preserves the old SQL claim-evidence provenance without a `Claim` node table.
+- Entity keys are deterministic integers assigned at build time (stable across rebuilds). Genes are keyed by `symbol` and carry both `uniprot_id` and `ensembl_gene_id` so DrugCentral/Reactome (uniprot) and Open Targets (ensembl) join cleanly.
+- Tools query the store via `get_store().out_edges(...)` / `in_edges(...)` / `find_by_name(...)`; they never touch a database.
 
-The schema lives in the `kg` schema namespace. Key tables (see [schema.md](.github/copilot-planning/schema.md)):
+## LLM orchestration
 
-### Node Tables
-| Table | Purpose | Key External IDs |
-|-------|---------|------------------|
-| `kg.Drug` | Drug entities | `drugcentral_id`, `chembl_id`, `pubchem_cid`, `inchikey` |
-| `kg.Gene` | Gene/protein entities | `hgnc_id`, `ensembl_gene_id`, `uniprot_id` |
-| `kg.Disease` | Disease/condition entities | `mondo_id`, `doid`, `efo_id` |
-| `kg.Pathway` | Biological pathways | `reactome_id`, `wikipathways_id` |
-| `kg.AdverseEvent` | Adverse event terms | `ae_label`, `ae_code`, `ae_ontology` |
-| `kg.Claim` | Assertions linking entities | `claim_type`, `strength_score`, `dataset_id` |
-| `kg.Evidence` | Provenance records | `evidence_type`, `source_record_id`, `payload_json` |
+- One LangChain/LangGraph ReAct agent ([src/kg_ae/llm/agent.py](../src/kg_ae/llm/agent.py)) via `create_react_agent`. Entry point: `run_agent(query, ensemble_size, max_iterations)`. "Multiple agents" = a self-consistency ensemble (`KG_AE_AGENT_ENSEMBLE_SIZE`) whose answers are reconciled by a final pass.
+- One OpenAI-compatible client ([src/kg_ae/llm/llm_client.py](../src/kg_ae/llm/llm_client.py)): `build_chat_model()`. Provider is `KG_AE_LLM_PROVIDER=openrouter|local`; only `KG_AE_LLM_BASE_URL` + `KG_AE_LLM_MODEL` differ between dev and deployment.
+- Tools are registered in [src/kg_ae/llm/lc_tools.py](../src/kg_ae/llm/lc_tools.py) (`GRAPH_TOOLS` + `build_tools()`). When you add a tool to `src/kg_ae/tools/`, wrap it with `@tool` there and document it in [docs/tools-api.md](../docs/tools-api.md). Outputs are truncated to `MAX_ITEMS_PER_TOOL = 30`.
+- **Tavily** (`tool_web_verify`) is registered only when `settings.web_search_enabled()` is true (online, key set). It is scoped to entity resolution/verification and must never be treated as evidence.
+- **Airgap guard**: `build_chat_model()` calls `enforce_compliance()`, which raises `ComplianceError` if `KG_AE_AIRGAPPED=true` and the LLM URL is non-local or web search is on. See [docs/compliance.md](../docs/compliance.md).
 
-### Edge Tables
-| Table | From → To | Purpose |
-|-------|-----------|---------|
-| `kg.HasClaim` | Drug/Gene/etc → Claim | Links entities to claims about them |
-| `kg.ClaimGene` | Claim → Gene | Drug-target relationships |
-| `kg.ClaimDisease` | Claim → Disease | Indication/contraindication |
-| `kg.ClaimPathway` | Claim → Pathway | Pathway membership/perturbation |
-| `kg.ClaimAdverseEvent` | Claim → AdverseEvent | Drug-AE associations |
-| `kg.SupportedBy` | Claim → Evidence | Provenance links |
+## Common commands
 
-### Relational Metadata
-- `kg.Dataset` — Registry of data sources (version, license, SHA256)
-- `kg.IngestRun` — ETL run tracking (status, row counts, timestamps)
+```powershell
+uv sync                                      # install deps
+uv run kg-ae build-graph                     # build data/graph/*.json from silver Parquet
+uv run kg-ae doctor                          # show LLM + compliance posture
+uv run python -m kg_ae.cli etl               # interactive ETL dashboard (download/parse/normalize)
+uv run python -m kg_ae.cli etl --tier 1      # only foundational sources
+uv run python -m kg_ae.cli etl --dataset sider --force   # one source + deps, force re-process
 
-## Data Sources
+uv run kg-ae query "What AEs do statins share?"
+uv run python scripts/query_react.py --ensemble 3 "Why might atorvastatin cause myopathy?"
+uv run python scripts/graph_stats.py         # node/edge/claim-type stats
 
-### MVP Bundle (Milestone A)
-| Layer | Source | License | Notes |
-|-------|--------|---------|-------|
-| Drug ↔ Target | ChEMBL, DrugCentral | CC BY-SA, Open | Primary mechanism data |
-| Gene ↔ Disease | Open Targets, CTD | CC0, Open | Disease associations |
-| Pathways | Reactome | CC BY 4.0 | Curated pathways |
-| Adverse Events | SIDER, openFDA FAERS | CC BY-NC-SA*, Public | *SIDER is non-commercial |
-| Identifiers | HGNC, MONDO, UniProt | CC0/CC BY 4.0 | Cross-reference mappings |
-
-### API Endpoints (for subset testing)
-- **DrugCentral**: `https://drugcentral.org/OpenAPI`
-- **openFDA FAERS**: `https://api.fda.gov/drug/event.json`
-- **Reactome Content Service**: `https://reactome.org/ContentService/`
-- **Open Targets GraphQL**: `https://api.platform.opentargets.org/api/v4/graphql`
-
-## LLM Tool Interface
-
-The LLM calls these deterministic tools (see [milestones.md](.github/copilot-planning/milestones.md#6-llm-orchestration-llamacpp--strict-tool-calling)):
-
-```python
-resolve_entities(drugs, conditions)      # → canonical IDs + confidence
-get_drug_profile(drug_id)                # → targets, indications, known AEs
-expand_gene_context(gene_ids)            # → pathways, diseases
-find_paths(start_nodes, end_nodes, constraints)
-rank_paths(paths, patient_context)
-export_subgraph(nodes, edges, format)    # → JSON or GraphML
+uv run pytest                                # full suite (tool tests run against the JSON graph)
+uv run ruff check . && uv run ruff format .  # lint + format
 ```
 
-**Critical rule**: Tools execute synchronously. The LLM only gets results after tool completion — no streaming final answers until tools finish.
+## Pitfalls and prior lessons
 
-## Conventions
+- **Python 3.12+** (`requires-python` in [pyproject.toml](../pyproject.toml)). `uv` manages the interpreter.
+- **Build the graph before querying.** `GraphStore` raises if `data/graph/nodes.json` is missing; run `uv run kg-ae build-graph` first. The store is `lru_cache`d per process.
+- **`kg_ae.db` is a deprecated shim.** Imports succeed (so legacy dataset `load.py` files still import) but any call raises. Do not add new SQL; build graph edges in `graph/build.py` instead.
+- **Non-prefixed secrets.** `OPENROUTER_API_KEY` and `TAVILY_API_KEY` are read via `os.getenv` fallbacks; `config.py` calls `load_dotenv()` at import so they land in the environment. `KG_AE_*` vars are handled by pydantic-settings.
+- **Airgap is enforced, not advisory.** With `KG_AE_AIRGAPPED=true`, a remote `KG_AE_LLM_BASE_URL` makes `build_chat_model()` raise `ComplianceError`. Point it at `http://localhost:11434/v1` (Ollama) etc.
+- **Only open-source models.** Defaults are Mistral Small (recommended) / Gemma. No proprietary models in any config.
+- **Licensing surface.** SIDER is CC BY-NC-SA (non-commercial). Don't enable it in a product-track build without a license note.
+- **AE terminology.** Source AE strings (SIDER MedDRA, openFDA reaction text) lack a shared ontology; the resolver is string-based. Treat AE labels cautiously as identifiers.
+- **Aspirational vs current code.** [.github/copilot-planning/](copilot-planning/) notes predate this re-architecture (they describe SQL Server). Trust the source.
 
-### JSON Columns
-- All `*_json` columns store valid JSON (enforced by `ISJSON()` constraints)
-- Common patterns: `synonyms_json`, `xrefs_json`, `meta_json`, `payload_json`
+## Documentation map
 
-### Embeddings
-- `VECTOR(1536)` columns for semantic similarity search
-- Used for entity resolution fallback and AE term matching
-
-### Scoring
-- All scores normalized to 0–1 range
-- Edge score formula: `w_source × w_field_quality × w_recency × w_frequency × resolver_conf`
-- Evidence hierarchy: curated pharmacology > curated DB > label-listed AE > FAERS signal > SIDER
-
-### ETL Patterns
-- Use `BULK INSERT` / bcp for large files
-- `pyodbc` with `fast_executemany=True` for batch inserts
-- Stage data in temp tables, then MERGE into graph tables
-- Always record dataset version and file hashes in `kg.Dataset`
-
-## Development Milestones
-
-| Milestone | Deliverable |
-|-----------|-------------|
-| **A** | KG skeleton: ChEMBL + Reactome + Open Targets + SIDER + SQL schema |
-| **B** | Query engine: subgraph extraction + path ranking + JSON/Cytoscape export |
-| **C** | LLM wrapper: tool schemas + dispatcher + guarded finalization |
-| **D** | Hardening: caching, version pinning, eval suite, CI |
-
-## Key Files
-
-- [milestones.md](.github/copilot-planning/milestones.md) — Full project plan with 10 sections
-- [schema.md](.github/copilot-planning/schema.md) — Complete SQL Server DDL for graph schema
-- [steps-1-2-3.md](.github/copilot-planning/steps-1-2-3.md) — Detailed ETL implementation plan
-
-## Gotchas
-
-1. **Licensing**: SIDER is non-commercial; DGIdb sources may be restrictive
-2. **MedDRA**: Avoid dependency — use openFDA reaction terms + OAE mapping
-3. **ID mapping churn**: Pin Open Targets releases; store version tags
-4. **AE terminology mismatch**: Expect resolver/mapping layer between SIDER/FAERS and OAE
-
-# Coding rules
-- Powershell uses backticks to escape. Use backticks where needed.
-- Mind this when executing commands in Powershell, SQL or Python scripts.
-- DO NOT USE any emojis in code, comments, docstrings, or documentation.
-- use `uv` for python package management
-- use `sqlcmd` for running sql scripts
-- Dev machine uses Windows 11 and Powershell 7. 
-- use `rich` for colored terminal output in python scripts.
-   - for loops or longer scripts, try to show verbose progress or completion percentages where possible.
-   - use spinners and progress bars for long running tasks.
-   - use panels and tables to summarize statistics or important information.
-- use `mssql_python` for connecting to sql server from python.
-   - more infroamtion here [https://github.com/microsoft/mssql-python]
+| Topic | File |
+|-------|------|
+| Project overview, graph stats, example queries | [README.md](../README.md) |
+| EU airgapped deployment + compliance switch | [docs/compliance.md](../docs/compliance.md) |
+| Query workflow walkthrough | [workflow.md](../workflow.md) |
+| Setup (env) | [docs/setup.md](../docs/setup.md) |
+| ETL pipeline runner | [docs/etl-guide.md](../docs/etl-guide.md) |
+| All 13 data sources (URLs, licenses, fields) | [docs/data-sources.md](../docs/data-sources.md) |
+| LLM endpoint setup (OpenRouter / local) | [docs/llm-setup.md](../docs/llm-setup.md) |
+| Tool function reference for the LLM | [docs/tools-api.md](../docs/tools-api.md) |
+| Scoring math + provenance hierarchy | [docs/scoring-policy.md](../docs/scoring-policy.md) |

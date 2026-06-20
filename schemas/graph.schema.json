@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kg-ae/graph.schema.json",
+  "title": "kg_ae file-based knowledge graph",
+  "description": "Contract for the JSON artifact produced by `kg-ae build-graph` (data/graph/*.json). This documents the shape that GraphStore expects and that stage_verify enforces.",
+  "type": "object",
+  "definitions": {
+    "nodeType": {
+      "type": "string",
+      "enum": ["Drug", "Gene", "Pathway", "Disease", "AdverseEvent", "DrugCombination"]
+    },
+    "edge": {
+      "type": "object",
+      "required": ["src_type", "src_key", "dst_type", "dst_key", "edge", "claim_type", "dataset"],
+      "properties": {
+        "src_type": { "$ref": "#/definitions/nodeType" },
+        "src_key": { "type": "integer" },
+        "dst_type": { "$ref": "#/definitions/nodeType" },
+        "dst_key": { "type": "integer" },
+        "edge": { "type": "string" },
+        "claim_key": { "type": ["integer", "null"] },
+        "claim_type": { "type": ["string", "null"] },
+        "strength_score": { "type": ["number", "null"] },
+        "frequency": { "type": ["number", "null"] },
+        "relation": { "type": ["string", "null"] },
+        "effect": { "type": ["string", "null"] },
+        "polarity": { "type": ["integer", "null"] },
+        "dataset": { "type": ["string", "null"] },
+        "meta": { "type": "object" },
+        "statement": { "type": "object" },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "evidence_type": { "type": ["string", "null"] },
+              "source_record_id": { "type": ["string", "null"] },
+              "source_url": { "type": ["string", "null"] },
+              "dataset": { "type": ["string", "null"] },
+              "payload": { "type": "object" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "properties": {
+    "nodes": {
+      "type": "object",
+      "description": "{node_type: {key(str): {properties}}}",
+      "propertyNames": { "$ref": "#/definitions/nodeType" }
+    },
+    "edges": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/edge" }
+    }
+  }
+}

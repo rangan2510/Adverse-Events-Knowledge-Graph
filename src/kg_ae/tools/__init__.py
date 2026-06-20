@@ -7,9 +7,11 @@ All tools return structured data (never prose).
 
 from kg_ae.tools.adverse_events import (
     DrugAdverseEvent,
+    DrugDrugInteraction,
     DrugLabelSection,
     FAERSSignal,
     get_drug_adverse_events,
+    get_drug_drug_interactions,
     get_drug_faers_signals,
     get_drug_label_sections,
     get_drug_profile,
@@ -83,7 +85,9 @@ __all__ = [
     "get_drug_profile",
     "get_drug_label_sections",
     "get_drug_faers_signals",
+    "get_drug_drug_interactions",
     "DrugAdverseEvent",
+    "DrugDrugInteraction",
     "DrugLabelSection",
     "FAERSSignal",
     # Subgraph

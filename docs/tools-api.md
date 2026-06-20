@@ -1,29 +1,38 @@
 # LLM Tool Functions API Reference
 
-This document describes the deterministic tools available for the LLM orchestrator to query the Drug-AE Knowledge Graph. All tools return structured data (never prose) and are designed to be called synchronously.
+This document describes the deterministic tools available for the LLM agent to
+query the Drug-AE Knowledge Graph. All tools return structured data (never
+prose) and query the in-memory JSON `GraphStore` (no database).
 
-## Output Handling in ReAct Orchestrator
+## Agent tool exposure
 
-When tools are called through the ReAct orchestrator (`react_executor.py`), outputs are processed to fit within LLM context limits:
+The LangChain/LangGraph ReAct agent reaches these functions through `@tool`
+wrappers in [src/kg_ae/llm/lc_tools.py](../src/kg_ae/llm/lc_tools.py). The
+active agent toolset (20 tools) is:
+
+- Resolution: `resolve_drugs`, `resolve_genes`, `resolve_diseases`, `resolve_adverse_events`
+- Mechanism: `get_drug_targets`, `get_gene_pathways`, `get_gene_diseases`,
+  `get_disease_genes`, `get_gene_interactors`, `expand_mechanism`
+- Adverse events: `get_drug_adverse_events`, `get_drug_faers_signals`,
+  `get_drug_drug_interactions`, `get_drug_profile`, `get_drug_label_sections`
+- Paths / insight: `find_drug_to_ae_paths`, `explain_paths`
+- Provenance: `get_claim_evidence`, `get_entity_claims`
+- Optional (online only): `tool_web_verify` (Tavily; entity resolution only)
+
+`get_disease_genes`, `get_gene_interactors`, `get_drug_label_sections`, and
+`explain_paths` are the "insight" tools that let the agent reason about reverse
+disease->gene links, indirect (PPI) mechanism, clinical label context, and
+ranked drug->AE explanations respectively.
+
+## Output handling
+
+Tool outputs are converted from dataclasses to plain dicts and truncated so the
+context window stays bounded:
 
 | Setting | Value | Description |
 |---------|-------|-------------|
 | `MAX_ITEMS_PER_TOOL` | 30 | Maximum list items returned per tool call |
-| Truncation indicator | `"...(N more items)"` | Appended when results are truncated |
-
-### Priority Field Formatting
-
-Tool outputs are formatted with priority fields first for better LLM comprehension:
-
-| Tool Type | Priority Fields (in order) |
-|-----------|---------------------------|
-| Adverse Event tools | `ae_label`, `ae_key`, `frequency`, `source` |
-| Drug targets | `gene_symbol`, `gene_key`, `action_type` |
-| Pathway tools | `pathway_name`, `pathway_key`, `source` |
-| Disease tools | `disease_name`, `disease_key`, `score` |
-| Entity resolution | `name`, `key`, `confidence`, `source` |
-
-This ensures the LLM sees human-readable labels before numeric keys.
+| Truncation indicator | `{"_truncated": true, "_total": N, "_shown": 30}` | Appended when a list is truncated |
 
 ## Table of Contents
 
@@ -643,10 +652,18 @@ def find_drug_to_ae_paths(
 
 **Returns:** `list[MechanisticPath]` - Sorted by score
 
-**Path Types Found:**
-1. `Drug -> AdverseEvent` (direct association)
-2. `Drug -> Gene -> Pathway` (mechanistic context)
-3. `Drug -> Gene -> Disease` (disease-mediated)
+**Behavior:**
+- When `ae_key` is given, only paths that genuinely reach that adverse event
+  are returned, and the AE node is appended as the final step:
+  1. `Drug -> AdverseEvent` (direct edge asserted by the graph; strongest)
+  2. `Drug -> Gene -> Disease -> AdverseEvent` (kept only when the gene's
+     associated disease label matches the AE label, so unrelated
+     target-disease pairs are never emitted)
+- When `ae_key` is None, returns mechanistic context paths for exploration:
+  `Drug -> Gene -> Pathway` and `Drug -> Gene -> Disease`.
+
+This AE-connectivity filter prevents the agent from inventing a
+disease-to-AE leap the graph never asserted.
 
 **Example:**
 ```python

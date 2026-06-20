@@ -1,7 +1,7 @@
 """Guide to PHARMACOLOGY (GtoPdb) dataset - curated ligand-target interactions."""
 
 from .download import GtoPdbDownloader
-from .load import GtoPdbLoader
+from .normalize import GtopNormalizer
 from .parse import GtoPdbParser
 
-__all__ = ["GtoPdbDownloader", "GtoPdbParser", "GtoPdbLoader"]
+__all__ = ["GtoPdbDownloader", "GtoPdbParser", "GtopNormalizer"]

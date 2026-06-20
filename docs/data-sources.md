@@ -25,7 +25,8 @@ Tier 2: Extensions (depend on Tier 1)
   gtop         Pharmacological targets with affinity data
 
 Tier 3: Associations (depend on Tier 1-2)
-  sider        Drug-ADR pairs from labels
+  sider        Drug-ADR pairs from labels (SIDER 4.1, 2015; CC BY-NC-SA, research-only)
+  onsides      Drug-ADE pairs from labels (OnSIDES v3.1.1, 2026; MIT; US/EU/UK/JP labels)
   openfda      Drug labels with safety sections
   ctd          Chemical-gene-disease from toxicogenomics
   string       Protein-protein interactions
@@ -34,8 +35,67 @@ Tier 3: Associations (depend on Tier 1-2)
 
 Tier 4: Advanced (depend on Tier 1-3)
   chembl       Bioactivity data with binding affinities
+  bindingdb    Quantitative drug-target binding affinities (Ki/Kd/IC50/EC50; CC BY 4.0)
+  twosides     Drug-drug interaction adverse events (polypharmacy; no license -> research)
   faers        Adverse event signal detection from reports
 ```
+
+## License tiers
+
+Each dataset carries a `license_tier` (`commercial` or `research`) used to gate
+which sources appear in a build (see `kg-ae stage --license-tier`):
+
+- **research** (non-commercial / no explicit license): `sider` (CC BY-NC-SA), `ctd`.
+- **commercial** (permissive, product-OK): everything else, including `onsides` (MIT).
+
+## What's in the built graph
+
+The current `data/graph/` artifact is built from the silver tables of these
+sources (per-dataset edge counts are recorded in `meta.json`):
+
+| Source | Edge type | claim_type |
+|--------|-----------|------------|
+| drugcentral | Drug -> Gene | `DRUG_TARGET` |
+| gtop | Drug -> Gene | `DRUG_TARGET_GTOP` |
+| ctd | Drug -> Gene, Gene -> Disease | `DRUG_GENE_CTD`, `GENE_DISEASE_CTD` |
+| reactome | Gene -> Pathway | `GENE_PATHWAY` |
+| opentargets | Gene -> Disease | `GENE_DISEASE` |
+| clingen | Gene -> Disease | `GENE_DISEASE_CLINGEN` |
+| hpo | Gene -> Disease | `GENE_PHENOTYPE_HPO` |
+| string | Gene -> Gene (PPI) | `GENE_GENE_STRING` |
+| sider | Drug -> AdverseEvent | `DRUG_AE_SIDER` |
+| faers | Drug -> AdverseEvent | `DRUG_AE_FAERS` |
+| openfda | Drug label sections | `DRUG_LABEL` |
+
+Sources whose data still needs to be downloaded on a staging machine (not yet
+in the artifact): `onsides`, `bindingdb`, `twosides`, `chembl`. Their dataset
+modules and graph builders are wired and run automatically once the raw data is
+staged. Diseases from CTD/ClinGen/HPO (MESH/OMIM/MONDO) are merged into the
+Open Targets (EFO) disease nodes by label, or added as new disease nodes.
+
+## OnSIDES vs SIDER
+
+`onsides` is the modern, higher-recall successor to `sider` (label-extracted
+drug-ADE pairs via a fine-tuned PubMedBERT model, RxNorm + MedDRA, US/EU/UK/JP
+labels, MIT-licensed, quarterly updates). Both are kept as **independent
+evidence**: edges carry distinct claim types `DRUG_AE_SIDER` and
+`DRUG_AE_ONSIDES`, so the agent can corroborate an adverse event across sources.
+OnSIDES drugs join to existing drug nodes by name; AEs merge by MedDRA label.
+
+## Drug-drug interactions (polypharmacy)
+
+`twosides` introduces the only ternary relation in the graph: `(drug A + drug B)
+-> adverse event`. It is modelled with a `DrugCombination` node:
+
+```
+Drug A --DrugInCombination--> DrugCombination --DDI_AE_TWOSIDES--> AdverseEvent
+Drug B --DrugInCombination--> DrugCombination
+```
+
+Combination nodes are keyed by the sorted pair of drug keys (so a pair reuses
+one node), and the combination->AE edge carries the TWOSIDES `PRR` and report
+count. The agent reaches this via `get_drug_drug_interactions(drug_a, drug_b)`.
+TWOSIDES has no explicit license, so it is `research`-tier only.
 
 ## Normalization Strategy
 

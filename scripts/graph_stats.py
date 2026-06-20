@@ -1,64 +1,43 @@
-"""Quick graph statistics."""
+"""Quick statistics for the file-based JSON knowledge graph."""
+
+from collections import Counter
 
 from rich.console import Console
 from rich.table import Table
 
-from kg_ae.db import execute
+from kg_ae.graph import get_store
 
 console = Console()
+store = get_store()
 
 # Node counts
-nodes = [
-    ("kg.Drug", "Drugs"),
-    ("kg.Gene", "Genes"),
-    ("kg.Disease", "Diseases"),
-    ("kg.Pathway", "Pathways"),
-    ("kg.AdverseEvent", "Adverse Events"),
-    ("kg.Claim", "Claims"),
-    ("kg.Evidence", "Evidence"),
-]
-
+counts = store.counts()
 table = Table(title="Knowledge Graph Node Statistics")
 table.add_column("Entity", style="cyan")
 table.add_column("Count", justify="right", style="green")
-
-for tbl, name in nodes:
-    count = execute(f"SELECT COUNT(*) FROM {tbl}")[0][0]
-    table.add_row(name, f"{count:,}")
-
+for name in ("Drug", "Gene", "Disease", "Pathway", "AdverseEvent"):
+    table.add_row(name, f"{counts.get(name, 0):,}")
+table.add_row("Edges (claims)", f"{counts.get('edges', 0):,}")
 console.print(table)
 
-# Claim type breakdown
-claim_types = execute("""
-    SELECT claim_type, COUNT(*) as cnt 
-    FROM kg.Claim 
-    GROUP BY claim_type 
-    ORDER BY cnt DESC
-""")
+# Claim type + dataset breakdown (iterate edges once)
+claim_types: Counter[str] = Counter()
+datasets: Counter[str] = Counter()
+for edges in store._out.values():  # noqa: SLF001 - script-level introspection
+    for e in edges:
+        claim_types[e.claim_type or "?"] += 1
+        datasets[e.dataset or "?"] += 1
 
 table2 = Table(title="Claim Type Breakdown")
 table2.add_column("Claim Type", style="cyan")
 table2.add_column("Count", justify="right", style="green")
-
-for ct, cnt in claim_types:
+for ct, cnt in claim_types.most_common():
     table2.add_row(ct, f"{cnt:,}")
-
 console.print(table2)
-
-# Dataset coverage
-datasets = execute("""
-    SELECT d.dataset_name, COUNT(c.claim_key) as claims
-    FROM kg.Dataset d
-    LEFT JOIN kg.Claim c ON d.dataset_id = c.dataset_id
-    GROUP BY d.dataset_id, d.dataset_name
-    ORDER BY claims DESC
-""")
 
 table3 = Table(title="Dataset Coverage")
 table3.add_column("Dataset", style="cyan")
 table3.add_column("Claims", justify="right", style="green")
-
-for ds, cnt in datasets:
+for ds, cnt in datasets.most_common():
     table3.add_row(ds, f"{cnt:,}")
-
 console.print(table3)
