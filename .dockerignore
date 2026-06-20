@@ -19,7 +19,9 @@ data/silver/
 data/graph/*.json
 data/graph/meta.json
 
-# Local env (secrets are passed at run time via --env-file / -e)
+# Local env (secrets are passed at run time via --env-file / -e).
+# NOTE: ship.env is intentionally NOT excluded here so the "shared" image build
+# (Dockerfile.shared) can bake it in. The default Dockerfile never copies it.
 .env
 
 # Editor / OS noise

@@ -1,0 +1,19 @@
+# Drug-AE Knowledge Graph - "shared" image with baked-in credentials.
+#
+# This layers on top of the secret-free base image (kg-ae:latest, built from
+# Dockerfile) and bakes ship.env in as /app/.env so the app auto-loads it
+# (config.py calls load_dotenv()). The colleague then runs with zero setup:
+#
+#   docker build -t kg-ae:latest .                 # base, no secrets
+#   docker build -t kg-ae:shared -f Dockerfile.shared .
+#   docker run --rm kg-ae:shared query "Why might atorvastatin cause myopathy?"
+#
+# SECURITY: the resulting image embeds API keys and is therefore sensitive.
+# Bake ONLY a temporary, credit-limited OpenRouter key. ship.env is gitignored;
+# never push this image to a public registry.
+
+FROM kg-ae:latest
+
+# ship.env holds the temporary OpenRouter key + Tavily key. Baked as /app/.env
+# so load_dotenv() picks it up automatically at runtime.
+COPY ship.env /app/.env

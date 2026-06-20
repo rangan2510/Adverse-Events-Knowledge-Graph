@@ -51,6 +51,9 @@ data/graph/*.json
 # Transient experiment artifacts
 model_comparison.json
 
+# Shipped container secrets (baked into the OneDrive tar, never committed)
+ship.env
+
 # External tools (llama.cpp, model conversions)
 external/
 
