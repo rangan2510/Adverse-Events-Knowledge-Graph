@@ -23,6 +23,10 @@ wait, and cites a source for every claim.
 Without an OpenRouter key the program will not start. Without a Tavily key it runs normally and
 leaves out regulator web search; every other source still works.
 
+By default the agent uses [DeepSeek-V4.1-Flash](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash)
+through OpenRouter, an open-weight model. You can point it at a different model on OpenRouter,
+or at a locally hosted model, by editing `PV_LLM_MODEL` and `PV_LLM_BASE_URL` in `.env`.
+
 OpenRouter recommends setting a spending limit on each key. Do that when you create it.
 
 ## Getting started
