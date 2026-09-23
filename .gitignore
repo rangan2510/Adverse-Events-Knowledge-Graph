@@ -1,70 +1,29 @@
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
 *.egg-info/
-.installed.cfg
-*.egg
+build/
+dist/
 
-# Virtual environments
+# Virtual environment
 .venv/
-venv/
-ENV/
 
-# IDE
+# Tooling caches
+.ruff_cache/
+.pytest_cache/
+.coverage
+
+# Secrets
+.env
+
+# Sample answers and run logs
+output_*.txt
+run_*.txt
+
+# Editors
 .idea/
 .vscode/
 *.swp
-*.swo
-
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-.nox/
-
-# Data files (large, not for git)
-data/raw/
-data/bronze/
-data/silver/
-data/gold/
-
-# Knowledge graph: the raw JSON is huge (~1.7 GB) and rebuildable; we commit
-# only the max-compressed archive (data/graph/graph.7z, tracked via Git LFS).
-data/graph/*.json
-
-# Transient experiment artifacts
-model_comparison.json
-
-# Shipped container secrets (baked into the OneDrive tar, never committed)
-ship.env
-
-# External tools (llama.cpp, model conversions)
-external/
-
-# Environment
-.env
-.env.local
-*.env
-
-# Logs
-*.log
-logs/
 
 # OS
 .DS_Store
