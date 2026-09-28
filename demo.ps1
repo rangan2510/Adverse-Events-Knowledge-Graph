@@ -5,10 +5,12 @@
 #   .\demo.ps1 -Only 3      one case
 #   .\demo.ps1 -Chat        drop into a conversation instead
 #   .\demo.ps1 -OpenRouterKey sk-or-... -TavilyKey tvly-...   keys instead of .env
+#   .\demo.ps1 -Local       use a llama.cpp server on http://127.0.0.1:8080 instead of OpenRouter
 
 param(
     [switch]$Fast,
     [switch]$Chat,
+    [switch]$Local,
     [ValidateRange(1, 5)][int]$Only,
     [string]$OpenRouterKey,
     [string]$TavilyKey
@@ -19,7 +21,10 @@ Set-Location $PSScriptRoot
 
 if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
     Write-Host "uv is not installed. Get it from https://docs.astral.sh/uv/" -ForegroundColor Red
-    exit $OpenRouterKey -and -not (Test-Path .env)) {
+    exit 1
+}
+
+if (-not $Local -and -not $OpenRouterKey -and -not (Test-Path .env)) {
     Write-Host "No OpenRouter key. Pass -OpenRouterKey, or copy .env.example to .env and fill it in." -ForegroundColor Red
     exit 1
 }
@@ -27,10 +32,7 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
 # Keys are passed as environment variables rather than arguments so they do not show up in
 # the process list.
 if ($OpenRouterKey) { $env:OPENROUTER_API_KEY = $OpenRouterKey }
-if ($TavilyKey) { $env:TAVILY_API_KEY = $TavilyKey if (-not (Test-Path .env)) {
-    Write-Host ".env is missing. Copy .env.example to .env and add your OPENROUTER_API_KEY." -ForegroundColor Red
-    exit 1
-}
+if ($TavilyKey) { $env:TAVILY_API_KEY = $TavilyKey }
 
 # Answers contain arrows and accented characters; a cp1252 console mangles them.
 $OutputEncoding = [Console]::OutputEncoding = [Text.Encoding]::UTF8
@@ -39,12 +41,14 @@ $env:PYTHONIOENCODING = 'utf-8'
 Write-Host "Syncing dependencies..." -ForegroundColor DarkGray
 uv sync --quiet
 
+$model = if ($Local) { 'local' } else { 'openrouter' }
+
 if ($Chat) {
-    uv run pv chat
+    uv run pv chat --model $model
     exit $LASTEXITCODE
 }
 
-$args = @('run', 'pv', 'demo')
+$args = @('run', 'pv', 'demo', '--model', $model)
 if ($Fast) { $args += '--no-pause' }
 if ($Only) { $args += @('--only', $Only) }
 & uv @args

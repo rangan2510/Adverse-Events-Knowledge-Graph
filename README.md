@@ -10,7 +10,7 @@ wait, and cites a source for every claim.
 - **Windows, macOS or Linux** with a terminal
 - **uv**, the Python package manager. Install it from https://docs.astral.sh/uv/. It installs
   the right Python version for you.
-- **An OpenRouter API key** (required)
+- **An OpenRouter API key** (required, unless you run the model on your own computer)
 - **A Tavily API key** (optional)
 
 ## API keys
@@ -20,12 +20,12 @@ wait, and cites a source for every claim.
 | OpenRouter | Yes | Runs the language model that reads the evidence and writes the answer | https://openrouter.ai/keys | Pay per use. Load a few dollars of credit; one question costs a few cents |
 | Tavily | No | Searches regulator websites (EMA, MHRA, FDA and others) for documents the databases do not cover | https://app.tavily.com | Free for 1,000 searches a month, no card needed |
 
-Without an OpenRouter key the program will not start. Without a Tavily key it runs normally and
-leaves out regulator web search; every other source still works.
+Without an OpenRouter key the program will not start, unless you use `--model local`. Without a
+Tavily key it runs normally and leaves out regulator web search; every other source still works.
 
 By default the agent uses [DeepSeek-V4.1-Flash](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash)
-through OpenRouter, an open-weight model. You can point it at a different model on OpenRouter,
-or at a locally hosted model, by editing `PV_LLM_MODEL` and `PV_LLM_BASE_URL` in `.env`.
+through OpenRouter, an open-weight model. You can point it at a different model on OpenRouter by
+editing `PV_LLM_MODEL` in `.env`, or run a model on your own computer (see below).
 
 OpenRouter recommends setting a spending limit on each key. Do that when you create it.
 
@@ -91,7 +91,38 @@ Inside `chat`:
 With `ask`, add `--refs` or `--network` to print those after the answer.
 
 On Windows, `.\demo.ps1` runs the demo and checks your setup first. Add `-Chat` to start a
-conversation instead.
+conversation instead, and `-Local` to use a model on your own computer.
+
+## Run the model on your own computer
+
+Every command takes `--model openrouter` or `--model local`. Without the flag, `.env` decides.
+`local` talks to a [llama.cpp](https://github.com/ggml-org/llama.cpp) server and needs no
+OpenRouter key. The drug databases are still queried over the internet.
+
+**1. Install llama.cpp** (Windows; the Vulkan build works on AMD and NVIDIA cards)
+
+```
+winget install ggml.llamacpp
+```
+
+**2. Start the server** in its own terminal. The first run downloads the model (about 2.5 GB).
+
+```
+llama-server -hf unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M --jinja -c 32768 -ngl 99 --port 8080
+```
+
+**3. Ask a question**
+
+```
+uv run pv ask "Is there an interaction between ciclosporin and posaconazole?" --model local
+```
+
+If the server runs on another port or machine, add `--local-url http://host:port/v1`.
+
+This small model works, but it is slower than OpenRouter and makes more mistakes. In testing
+it misread one EU label and misspelled a drug name, so the wrong drug was looked up. A larger
+model, such as Qwen3-14B at `Q4_K_M` (about 9 GB), should do better if your graphics card has
+the memory.
 
 ## Example questions
 

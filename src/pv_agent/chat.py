@@ -25,6 +25,7 @@ from rich.table import Table
 from rich.text import Text
 
 from pv_agent import network
+from pv_agent.config import get_settings
 from pv_agent.graph import Event, Turn, run
 
 # Answers contain arrows and dashes. When stdout is a file or a legacy Windows console, Python
@@ -168,20 +169,35 @@ def chat() -> int:
 def set_keys(openrouter_key: str | None, tavily_key: str | None) -> bool:
     """Put command-line keys into the environment, where config.py reads them.
 
-    A key given on the command line wins over one in .env. Returns False when no OpenRouter
-    key is available from either place.
+    A key given on the command line wins over one in .env. Returns False when the model runs on
+    OpenRouter and no OpenRouter key is available from either place. A local server needs no key.
     """
     if openrouter_key:
         os.environ["OPENROUTER_API_KEY"] = openrouter_key
     if tavily_key:
         os.environ["TAVILY_API_KEY"] = tavily_key
+    if "openrouter.ai" not in get_settings().llm_base_url:
+        return True
     return bool(os.getenv("OPENROUTER_API_KEY"))
+
+
+def use_model(model: str | None, local_url: str) -> None:
+    """Point config.py at OpenRouter or a local llama.cpp server. None keeps .env as it is."""
+    if model == "local":
+        os.environ["PV_LLM_BASE_URL"] = local_url
+        os.environ["PV_LLM_MODEL"] = "local"
+    elif model == "openrouter":
+        os.environ["PV_LLM_BASE_URL"] = "https://openrouter.ai/api/v1"
 
 
 def main() -> int:
     keys = argparse.ArgumentParser(add_help=False)
-    keys.add_argument("--openrouter-key", help="OpenRouter API key (required, or set OPENROUTER_API_KEY in .env)")
+    keys.add_argument("--openrouter-key", help="OpenRouter API key (needed with --model openrouter)")
     keys.add_argument("--tavily-key", help="Tavily API key (optional; without it web search is disabled)")
+    keys.add_argument("--model", choices=["openrouter", "local"], help="where the model runs (default: .env)")
+    keys.add_argument(
+        "--local-url", default="http://127.0.0.1:8080/v1", help="llama.cpp server address for --model local"
+    )
 
     p = argparse.ArgumentParser(prog="pv", description="Pharmacovigilance agent over live sources.")
     sub = p.add_subparsers(dest="cmd")
@@ -195,6 +211,7 @@ def main() -> int:
     d.add_argument("--only", type=int, choices=[1, 2, 3, 4, 5], help="run a single case")
     args = p.parse_args()
 
+    use_model(getattr(args, "model", None), getattr(args, "local_url", ""))
     if not set_keys(getattr(args, "openrouter_key", None), getattr(args, "tavily_key", None)):
         console.print("[red]No OpenRouter key.[/red] Pass --openrouter-key or set OPENROUTER_API_KEY in .env.")
         return 2
