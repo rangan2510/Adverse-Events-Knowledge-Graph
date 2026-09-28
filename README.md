@@ -95,6 +95,9 @@ conversation instead, and `-Local` to use a model on your own computer.
 
 ## Run the model on your own computer
 
+For the full step-by-step guide, including fixes for common problems, see
+[docs/local-model.md](docs/local-model.md).
+
 Every command takes `--model openrouter` or `--model local`. Without the flag, `.env` decides.
 `local` talks to a [llama.cpp](https://github.com/ggml-org/llama.cpp) server and needs no
 OpenRouter key. The drug databases are still queried over the internet.
